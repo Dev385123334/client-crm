@@ -1,0 +1,43 @@
+.expenses-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px !important;
+  border: 2px dashed var(--border-light) !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--text-body);
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.summary-total {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-light);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-heading);
+}

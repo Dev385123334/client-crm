@@ -1,0 +1,28 @@
+.team-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.team-group-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.team-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-heading);
+  font-size: 14px;
+}
+
+.subtotal-row {
+  background: #f8fafc !important;
+}
+
+.subtotal-row td {
+  border-bottom: none !important;
+}
