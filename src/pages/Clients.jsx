@@ -92,16 +92,26 @@ export default function Clients() {
     return { ...r, diffDays, hasPayment };
   }).filter(r => !r.hasPayment && r.diffDays >= 0 && r.diffDays <= 7).sort((a, b) => a.diffDays - b.diffDays);
 
-  const tenures = activeRecords.map(r => calculateTenure(r.onboardingDate, currentMonth, currentYear));
-  const t9plus = tenures.filter(t => t.months >= 9).length;
-  const t6to9 = tenures.filter(t => t.months >= 6 && t.months < 9).length;
-  const t3to6 = tenures.filter(t => t.months >= 3 && t.months < 6).length;
-  const tUnder3 = tenures.filter(t => t.months > 0 && t.months < 3).length;
+  const tenureBuckets = [
+    { min: 9, max: Infinity, label: '9+ months', key: '9plus' },
+    { min: 6, max: 9, label: '6-9 months', key: '6to9' },
+    { min: 3, max: 6, label: '3-6 months', key: '3to6' },
+    { min: 0, max: 3, label: '0-3 months', key: '0to3' },
+  ];
 
-  const rev9plus = activeRecords.filter(r => calculateTenure(r.onboardingDate, currentMonth, currentYear).months >= 9).reduce((s, r) => s + r.monthlyPrice, 0);
-  const rev6to9 = activeRecords.filter(r => { const m = calculateTenure(r.onboardingDate, currentMonth, currentYear).months; return m >= 6 && m < 9; }).reduce((s, r) => s + r.monthlyPrice, 0);
-  const rev3to6 = activeRecords.filter(r => { const m = calculateTenure(r.onboardingDate, currentMonth, currentYear).months; return m >= 3 && m < 6; }).reduce((s, r) => s + r.monthlyPrice, 0);
-  const revUnder3 = activeRecords.filter(r => { const m = calculateTenure(r.onboardingDate, currentMonth, currentYear).months; return m > 0 && m < 3; }).reduce((s, r) => s + r.monthlyPrice, 0);
+  const tenures = activeRecords.map(r => calculateTenure(r.onboardingDate, currentMonth, currentYear));
+  const bucketCounts = tenureBuckets.map(b => tenures.filter(t => t.months >= b.min && t.months < b.max).length);
+  const [t9plus, t6to9, t3to6, tUnder3] = bucketCounts;
+
+  const bucketRevenues = tenureBuckets.map(b => {
+    const months = b.min === 9 ? Infinity : b.max;
+    const min = b.min;
+    return activeRecords.filter(r => {
+      const m = calculateTenure(r.onboardingDate, currentMonth, currentYear).months;
+      return m >= min && m < months;
+    }).reduce((s, r) => s + r.monthlyPrice, 0);
+  });
+  const [rev9plus, rev6to9, rev3to6, revUnder3] = bucketRevenues;
 
   const sortedByDate = [...activeRecords].sort((a, b) => a.onboardingDate.localeCompare(b.onboardingDate));
   const oldest = sortedByDate[0];
@@ -347,12 +357,12 @@ export default function Clients() {
         </div>
         <div className="card stat-card">
           <div className="stat-label">Oldest Client</div>
-          <div className="stat-value">{oldest ? oldest.businessName : '\u2014'}</div>
+          <div className="stat-value">{oldest ? oldest.businessName : '-'}</div>
           {oldest && <div className="stat-sub">{calculateTenure(oldest.onboardingDate, currentMonth, currentYear).text}</div>}
         </div>
         <div className="card stat-card">
           <div className="stat-label">Newest Client</div>
-          <div className="stat-value">{newest ? newest.businessName : '\u2014'}</div>
+          <div className="stat-value">{newest ? newest.businessName : '-'}</div>
           {newest && <div className="stat-sub">{formatDate(newest.onboardingDate)}</div>}
         </div>
       </div>
@@ -362,56 +372,34 @@ export default function Clients() {
         <div className="card breakdown-card">
           <h3 className="breakdown-title">Client Age Breakdown</h3>
           <div className="breakdown-list">
-            <div className="breakdown-item">
-              <div className="breakdown-left">
-                <span className="breakdown-label">9+ months</span>
-                <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (t9plus / activeCount) * 100 : 0}%` }}></div></div>
-              </div>
-              <span className="breakdown-value">{t9plus} clients &middot; {formatUSD(rev9plus)}/mo</span>
-            </div>
-            <div className="breakdown-item">
-              <div className="breakdown-left">
-                <span className="breakdown-label">6\u20139 months</span>
-                <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (t6to9 / activeCount) * 100 : 0}%` }}></div></div>
-              </div>
-              <span className="breakdown-value">{t6to9} clients &middot; {formatUSD(rev6to9)}/mo</span>
-            </div>
-            <div className="breakdown-item">
-              <div className="breakdown-left">
-                <span className="breakdown-label">3\u20136 months</span>
-                <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (t3to6 / activeCount) * 100 : 0}%` }}></div></div>
-              </div>
-              <span className="breakdown-value">{t3to6} clients &middot; {formatUSD(rev3to6)}/mo</span>
-            </div>
-            <div className="breakdown-item">
-              <div className="breakdown-left">
-                <span className="breakdown-label">&lt;3 months</span>
-                <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (tUnder3 / activeCount) * 100 : 0}%` }}></div></div>
-              </div>
-              <span className="breakdown-value">{tUnder3} clients &middot; {formatUSD(revUnder3)}/mo</span>
-            </div>
+            {tenureBuckets.map((b, i) => {
+              const counts = [t9plus, t6to9, t3to6, tUnder3][i];
+              const revs = [rev9plus, rev6to9, rev3to6, revUnder3][i];
+              return (
+                <div key={b.key} className="breakdown-item">
+                  <div className="breakdown-left">
+                    <span className="breakdown-label">{b.label}</span>
+                    <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (counts / activeCount) * 100 : 0}%` }}></div></div>
+                  </div>
+                  <span className="breakdown-value">{counts} clients - {formatUSD(revs)}/mo</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
         <div className="card breakdown-card">
           <h3 className="breakdown-title">Revenue by Client Tenure</h3>
           <div className="revenue-tenure-list">
-            <div className="rev-tenure-item">
-              <span className="rev-tenure-label">9+ months</span>
-              <span className="rev-tenure-value">{formatUSD(rev9plus)} ({pctOf(rev9plus, totalMRR)}%)</span>
-            </div>
-            <div className="rev-tenure-item">
-              <span className="rev-tenure-label">6\u20139 months</span>
-              <span className="rev-tenure-value">{formatUSD(rev6to9)} ({pctOf(rev6to9, totalMRR)}%)</span>
-            </div>
-            <div className="rev-tenure-item">
-              <span className="rev-tenure-label">3\u20136 months</span>
-              <span className="rev-tenure-value">{formatUSD(rev3to6)} ({pctOf(rev3to6, totalMRR)}%)</span>
-            </div>
-            <div className="rev-tenure-item">
-              <span className="rev-tenure-label">&lt;3 months</span>
-              <span className="rev-tenure-value">{formatUSD(revUnder3)} ({pctOf(revUnder3, totalMRR)}%)</span>
-            </div>
+            {tenureBuckets.map((b, i) => {
+              const revs = [rev9plus, rev6to9, rev3to6, revUnder3][i];
+              return (
+                <div key={b.key} className="rev-tenure-item">
+                  <span className="rev-tenure-label">{b.label}</span>
+                  <span className="rev-tenure-value">{formatUSD(revs)} ({pctOf(revs, totalMRR)}%)</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

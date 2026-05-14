@@ -55,8 +55,8 @@ export default function Forecast() {
   insights.push(`Your top 3 clients generate ${top3Revenue.toFixed(1)}% of revenue. Consider risk mitigation.`);
   if (profitBuffer > 0) insights.push(`You're profitable with a ${profitBuffer}-client safety buffer above break-even.`);
   if (gap > 0) insights.push(`To reach \u20B92L profit goal, add ${gap} more clients or increase prices by ${avgClientValue > 0 ? (((revenueNeeded_USD - totalMRR) / totalMRR) * 100).toFixed(0) : 0}%.`);
-  insights.push(`At 10% churn, you'll lose ${formatUSD(totalMRR * 0.10)}/month \u2014 ${Math.round(activeClients.length * 0.10)} clients \u2014 within 12 months.`);
-  if (contributions[0]) insights.push(`Your oldest client has been with you ${contributions[contributions.length - 1]?.tenure?.text || '?'} \u2014 consider a renewal conversation.`);
+  insights.push(`At 10% churn, you'll lose ${formatUSD(totalMRR * 0.10)}/month - ${Math.round(activeClients.length * 0.10)} clients - within 12 months.`);
+  if (contributions[0]) insights.push(`Your oldest client has been with you ${contributions[contributions.length - 1]?.tenure?.text || '?'} - consider a renewal conversation.`);
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload) return null;
