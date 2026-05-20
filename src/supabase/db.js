@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from './client';
 
 function mapRecordToDB(rec) {
   return {
+    id: rec.id,
     year: rec._year,
     month: rec._month,
     business_name: rec.businessName,
@@ -20,7 +21,8 @@ function mapRecordToDB(rec) {
     chargeback_amount: rec.chargebackAmount || 0,
     is_deleted: rec.isDeleted || false,
     deleted_at: rec.deletedAt || null,
-    deleted_reason: rec.deletedReason || ''
+    deleted_reason: rec.deletedReason || '',
+    updated_at: new Date().toISOString()
   };
 }
 
@@ -80,8 +82,29 @@ export async function loadMonthlyRecords() {
   if (!isSupabaseConfigured()) return null;
   const { data, error } = await supabase.from('monthly_client_records').select('*');
   if (error || !data) return null;
-  const grouped = {};
+
+  const seen = new Map();
+  const duplicateIds = [];
+  const unique = [];
+
+  data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
   for (const row of data) {
+    const key = `${row.year}|${row.month}|${row.business_name}`;
+    if (seen.has(key)) {
+      duplicateIds.push(row.id);
+    } else {
+      seen.set(key, true);
+      unique.push(row);
+    }
+  }
+
+  if (duplicateIds.length > 0) {
+    await supabase.from('monthly_client_records').delete().in('id', duplicateIds);
+  }
+
+  const grouped = {};
+  for (const row of unique) {
     const key = `${row.year}-${row.month}`;
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(mapDBToRecord(row));
