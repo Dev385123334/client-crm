@@ -12,9 +12,11 @@ function loadFromLS(key, def) {
   } catch { return def; }
 }
 
-function extractSheetId(url) {
+function resolveSheetUrl(url) {
+  if (/\/pub\?/.test(url) || /\/pub$/.test(url)) return url;
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  return match ? match[1] : null;
+  if (!match) return null;
+  return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
 }
 
 export default function Integrations() {
@@ -56,9 +58,9 @@ export default function Integrations() {
     const sheet = type === 'client' ? clientSheet : expenseSheet;
     const setSheet = type === 'client' ? setClientSheet : setExpenseSheet;
     const label = type === 'client' ? 'Client Sheet' : 'Expense Sheet';
-    const sheetId = extractSheetId(sheet.url);
+    const csvUrl = resolveSheetUrl(sheet.url);
 
-    if (!sheetId) {
+    if (!csvUrl) {
       addLog(label, 'Invalid sheet URL', 'error');
       return;
     }
@@ -66,7 +68,6 @@ export default function Integrations() {
     setSheet(prev => ({ ...prev, syncing: true, status: 'syncing', error: '' }));
 
     try {
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
       const res = await fetch(csvUrl);
 
       if (!res.ok) {
