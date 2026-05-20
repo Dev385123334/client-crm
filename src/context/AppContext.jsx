@@ -20,6 +20,8 @@ function createMonthlyRecord(recordData, overrides = {}) {
     id,
     businessName: recordData.businessName || '',
     contactPerson: recordData.contactPerson || '',
+    phone: recordData.phone || '',
+    email: recordData.email || '',
     onboardingDate: recordData.onboardingDate || '',
     monthlyPrice: recordData.monthlyPrice || 0,
     paymentMethod: recordData.paymentMethod || 'Stripe',

@@ -168,8 +168,12 @@ export default function Clients() {
     updateRecordInMonth(recordId, { paymentReceived: amount, refundAmount: 0, chargebackAmount: 0 });
   };
 
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailRecord, setDetailRecord] = useState(null);
+
   const [form, setForm] = useState({
-    businessName: '', contactPerson: '', monthlyPrice: '', onboardingDate: '',
+    businessName: '', contactPerson: '', phone: '', email: '',
+    monthlyPrice: '', onboardingDate: '',
     status: 'Active', statusDate: '', statusNote: 'None',
     contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
     paymentReceived: '', refundAmount: '', chargebackAmount: ''
@@ -177,7 +181,8 @@ export default function Clients() {
 
   const openAddModal = () => {
     setForm({
-      businessName: '', contactPerson: '', monthlyPrice: '', onboardingDate: '',
+      businessName: '', contactPerson: '', phone: '', email: '',
+      monthlyPrice: '', onboardingDate: '',
       status: 'Active', statusDate: '', statusNote: 'None',
       contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
       paymentReceived: '', refundAmount: '', chargebackAmount: ''
@@ -190,6 +195,8 @@ export default function Clients() {
     setForm({
       businessName: record.businessName,
       contactPerson: record.contactPerson || '',
+      phone: record.phone || '',
+      email: record.email || '',
       monthlyPrice: record.monthlyPrice,
       onboardingDate: record.onboardingDate,
       status: record.status,
@@ -213,6 +220,8 @@ export default function Clients() {
     const recordData = {
       businessName: form.businessName,
       contactPerson: form.contactPerson,
+      phone: form.phone,
+      email: form.email,
       monthlyPrice: parseFloat(form.monthlyPrice),
       onboardingDate: form.onboardingDate,
       contractEndDate: form.contractEndDate,
@@ -293,10 +302,13 @@ export default function Clients() {
     if (!importPreview) return;
     let imported = 0, skipped = 0, errors = [];
     importPreview.forEach((row, i) => {
-      const name = row['Business Name'] || row['business_name'] || row['Name'] || '';
-      let dateRaw = row['Onboarding Date'] || row['onboarding_date'] || row['Date'] || '';
-      let priceRaw = row['Monthly Price'] || row['monthly_price'] || row['Price'] || '';
+      const name = row['Buiness Name'] || row['Business Name'] || row['business_name'] || row['Name'] || '';
+      let dateRaw = row['Month'] || row['Onboarding Date'] || row['onboarding_date'] || row['Date'] || '';
+      let priceRaw = row['Value'] || row['Monthly Price'] || row['monthly_price'] || row['Price'] || '';
       const statusRaw = row['Status'] || row['status'] || 'Active';
+      const clientName = row['Client Name'] || row['client_name'] || row['Contact Person'] || '';
+      const phoneRaw = row['Contact No.'] || row['contact_no'] || row['Phone'] || '';
+      const emailRaw = row['Email'] || row['email'] || '';
       if (!name) { errors.push(`Row ${i + 2}: Missing business name`); return; }
       let isoDate = parseGoogleSheetDate(dateRaw);
       if (!isoDate && dateRaw) { const d = new Date(dateRaw); if (!isNaN(d)) isoDate = d.toISOString().split('T')[0]; }
@@ -306,7 +318,8 @@ export default function Clients() {
       const dup = records.find(r => r.businessName === name && r.onboardingDate === isoDate);
       if (dup) { skipped++; return; }
       addRecordToMonth({
-        businessName: name, monthlyPrice: price, onboardingDate: isoDate,
+        businessName: name, contactPerson: clientName, phone: phoneRaw,
+        email: emailRaw, monthlyPrice: price, onboardingDate: isoDate,
         paymentDueDay: new Date(isoDate).getDate(), paymentMethod: 'Stripe',
         notes: row['Notes'] || '', status: statusRaw
       });
@@ -575,8 +588,8 @@ export default function Clients() {
                   else { ps.label = `DUE IN ${diffDays} DAYS`; ps.type = 'neutral'; ps.emoji = '\u26AA'; }
                 }
                 return (
-                  <tr key={record.id} className={selectedIds.has(record.id) ? 'row-selected' : ''}>
-                    <td className="checkbox-cell">
+                  <tr key={record.id} className={selectedIds.has(record.id) ? 'row-selected' : ''} style={{ cursor: 'pointer' }} onClick={() => { setDetailRecord(record); setShowDetailModal(true); }}>
+                    <td className="checkbox-cell" onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         className="row-checkbox"
@@ -629,10 +642,10 @@ export default function Clients() {
                     </td>
                     <td>
                       <div className="flex gap-2">
-                        <button className="btn-icon" title="Edit" onClick={() => openEditModal(record)}>
+                        <button className="btn-icon" title="Edit" onClick={e => { e.stopPropagation(); openEditModal(record); }}>
                           <Edit3 size={14} />
                         </button>
-                        <button className="btn-icon" title="Delete" style={{ color: 'var(--danger)' }} onClick={() => promptDelete(record)}>
+                        <button className="btn-icon" title="Delete" style={{ color: 'var(--danger)' }} onClick={e => { e.stopPropagation(); promptDelete(record); }}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -715,9 +728,19 @@ export default function Clients() {
               <label className="input-label">Business Name *</label>
               <input className="input-field" value={form.businessName} onChange={e => setForm({ ...form, businessName: e.target.value })} />
             </div>
-            <div className="input-group">
-              <label className="input-label">Contact Person</label>
-              <input className="input-field" value={form.contactPerson} onChange={e => setForm({ ...form, contactPerson: e.target.value })} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="input-group">
+                <label className="input-label">Contact Person</label>
+                <input className="input-field" value={form.contactPerson} onChange={e => setForm({ ...form, contactPerson: e.target.value })} />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Phone</label>
+                <input className="input-field" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="(999) 999-9999" />
+              </div>
+              <div className="input-group">
+                <label className="input-label">Email</label>
+                <input className="input-field" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="client@example.com" />
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="input-group">
@@ -910,6 +933,66 @@ export default function Clients() {
             )}
             <div className="flex gap-3" style={{ marginTop: 20, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowTrashModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Client Detail Modal */}
+      {showDetailModal && detailRecord && (
+        <div className="modal-overlay" onClick={() => { setShowDetailModal(false); setDetailRecord(null); }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 style={{ margin: 0 }}>{detailRecord.businessName}</h2>
+              <button className="btn-icon" onClick={() => { setShowDetailModal(false); setDetailRecord(null); }}><X size={18} /></button>
+            </div>
+            <div className="detail-grid">
+              <div className="detail-row">
+                <span className="detail-label">Contact</span>
+                <span className="detail-value">{detailRecord.contactPerson || '—'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Phone</span>
+                <span className="detail-value">{detailRecord.phone || '—'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Email</span>
+                <span className="detail-value">{detailRecord.email || '—'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Onboarded</span>
+                <span className="detail-value">{formatDate(detailRecord.onboardingDate)}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Tenure</span>
+                <span className="detail-value">{calculateTenure(detailRecord.onboardingDate, currentMonth, currentYear).text}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Monthly Price</span>
+                <span className="detail-value">{formatUSD(detailRecord.monthlyPrice)}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Status</span>
+                <span className={`badge badge-${detailRecord.status === 'Active' ? 'success' : detailRecord.status === 'Paused' ? 'warning' : 'danger'}`}>{detailRecord.status}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Payment Method</span>
+                <span className="detail-value">{detailRecord.paymentMethod || '—'}</span>
+              </div>
+              {detailRecord.notes && (
+                <div className="detail-row">
+                  <span className="detail-label">Notes</span>
+                  <span className="detail-value">{detailRecord.notes}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3" style={{ marginTop: 20, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => { setShowDetailModal(false); setDetailRecord(null); }}>Close</button>
+              <button className="btn btn-primary" onClick={() => {
+                openEditModal(detailRecord);
+                setShowDetailModal(false);
+                setDetailRecord(null);
+              }}>Edit Client</button>
             </div>
           </div>
         </div>

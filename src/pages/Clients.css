@@ -487,3 +487,35 @@
 .bulk-delete-item .font-medium {
   color: var(--text-heading);
 }
+
+/* ── Detail Modal ── */
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: var(--radius-md);
+  gap: 16px;
+}
+
+.detail-label {
+  font-size: 13px;
+  color: var(--text-label);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.detail-value {
+  font-size: 13px;
+  color: var(--text-heading);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
