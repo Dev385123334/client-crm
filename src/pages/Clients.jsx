@@ -30,6 +30,9 @@ export default function Clients() {
   const [importPreview, setImportPreview] = useState(null);
   const fileInputRef = useRef(null);
 
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
   const [undoData, setUndoData] = useState(null);
   const [undoRemaining, setUndoRemaining] = useState(0);
   const undoIntervalRef = useRef(null);
@@ -52,8 +55,9 @@ export default function Clients() {
 
   const handleUndo = () => {
     if (!undoData) return;
-    const { recordId, month, year } = undoData;
-    restoreRecord(recordId, undoData.previousStatus || 'Active', month, year);
+    undoData.records.forEach(rec => {
+      restoreRecord(rec.recordId, rec.previousStatus || 'Active', rec.month, rec.year);
+    });
     clearInterval(undoIntervalRef.current);
     setUndoData(null);
     setUndoRemaining(0);
@@ -140,6 +144,26 @@ export default function Clients() {
     return 0;
   });
 
+  const isAllSelected = sorted.length > 0 && sorted.every(r => selectedIds.has(r.id));
+  const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sorted.map(r => r.id)));
+    }
+  };
+
   const markAsPaid = (recordId, amount) => {
     updateRecordInMonth(recordId, { paymentReceived: amount, refundAmount: 0, chargebackAmount: 0 });
   };
@@ -224,16 +248,36 @@ export default function Clients() {
       softDeleteRecord(deleteTarget.id);
     }
     setUndoData({
-      recordId: deleteTarget.id,
-      month: currentMonth,
-      year: currentYear,
-      previousStatus: deleteTarget.status,
-      businessName: deleteTarget.businessName,
-      deletedFromAll: deleteAll
+      records: [{
+        recordId: deleteTarget.id,
+        month: currentMonth,
+        year: currentYear,
+        previousStatus: deleteTarget.status,
+        businessName: deleteTarget.businessName,
+        deletedFromAll: deleteAll
+      }]
     });
     setUndoRemaining(10);
     setShowDeleteModal(false);
     setDeleteTarget(null);
+  };
+
+  const confirmBulkDelete = () => {
+    const recordsToDelete = sorted.filter(r => selectedIds.has(r.id));
+    recordsToDelete.forEach(r => softDeleteRecord(r.id));
+    setUndoData({
+      records: recordsToDelete.map(r => ({
+        recordId: r.id,
+        month: currentMonth,
+        year: currentYear,
+        previousStatus: r.status,
+        businessName: r.businessName,
+        deletedFromAll: false
+      }))
+    });
+    setUndoRemaining(10);
+    setSelectedIds(new Set());
+    setShowBulkDeleteModal(false);
   };
 
   const handleFileImport = (e) => {
@@ -278,12 +322,18 @@ export default function Clients() {
   const allTrash = getAllTrashRecords();
   const trashCount = allTrash.length;
 
+  const emptyTrash = () => {
+    if (trashCount === 0) return;
+    if (!confirm(`Permanently delete all ${trashCount} trashed client${trashCount > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    allTrash.forEach(tr => permanentlyDeleteRecord(tr.id, tr._month, tr._year));
+  };
+
   return (
     <div className="clients-page">
       {/* Undo Toast */}
       {undoData && (
         <div className="undo-toast">
-          <span>Client moved to trash.</span>
+          <span>{undoData.records.length > 1 ? `${undoData.records.length} clients moved to trash.` : 'Client moved to trash.'}</span>
           <button className="undo-btn" onClick={handleUndo}>Undo ({undoRemaining}s)</button>
         </div>
       )}
@@ -453,12 +503,38 @@ export default function Clients() {
         </div>
       </div>
 
+      {/* Bulk Selection Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="bulk-toolbar">
+          <div className="bulk-toolbar-left">
+            <span className="bulk-counter">{selectedIds.size} client{selectedIds.size > 1 ? 's' : ''} selected</span>
+          </div>
+          <div className="bulk-toolbar-actions">
+            <button className="btn btn-sm btn-secondary" onClick={toggleSelectAll}>
+              {isAllSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            <button className="btn btn-sm btn-danger" onClick={() => setShowBulkDeleteModal(true)}>
+              <Trash2 size={14} /> Delete Selected ({selectedIds.size})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Client Table */}
       {sorted.length > 0 ? (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="table">
             <thead>
               <tr>
+                <th className="checkbox-cell">
+                  <input
+                    type="checkbox"
+                    className="row-checkbox"
+                    checked={isAllSelected}
+                    ref={el => { if (el) el.indeterminate = isIndeterminate; }}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <th onClick={() => handleSort('businessName')}>Client Name <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('onboardingDate')}>Onboarded <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('tenure')}>Tenure <ArrowUpDown size={10} /></th>
@@ -499,7 +575,15 @@ export default function Clients() {
                   else { ps.label = `DUE IN ${diffDays} DAYS`; ps.type = 'neutral'; ps.emoji = '\u26AA'; }
                 }
                 return (
-                  <tr key={record.id}>
+                  <tr key={record.id} className={selectedIds.has(record.id) ? 'row-selected' : ''}>
+                    <td className="checkbox-cell">
+                      <input
+                        type="checkbox"
+                        className="row-checkbox"
+                        checked={selectedIds.has(record.id)}
+                        onChange={() => toggleSelectOne(record.id)}
+                      />
+                    </td>
                     <td>
                       <div className="client-name-cell">
                         <span className="status-dot" data-status={record.status}></span>
@@ -590,6 +674,32 @@ export default function Clients() {
               </button>
               <button className="btn btn-danger" onClick={() => confirmDelete(false)}>
                 <Trash2 size={14} /> Delete from {curMonthName} Only
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowBulkDeleteModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <h2 style={{ marginBottom: 12 }}>Delete {selectedIds.size} client{selectedIds.size > 1 ? 's' : ''}?</h2>
+            <p className="text-sm text-muted" style={{ marginBottom: 16 }}>
+              The following clients will be moved to Trash for 30 days. You can restore them anytime during this period.
+            </p>
+            <div className="bulk-delete-list">
+              {sorted.filter(r => selectedIds.has(r.id)).map(r => (
+                <div key={r.id} className="bulk-delete-item">
+                  <span className="font-medium">{r.businessName}</span>
+                  <span className="text-muted text-sm">{formatUSD(r.monthlyPrice)}/mo &middot; Onboarded {formatDate(r.onboardingDate)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowBulkDeleteModal(false)}>Cancel</button>
+              <button className="btn btn-danger" onClick={confirmBulkDelete}>
+                <Trash2 size={14} /> Delete {selectedIds.size} to Trash
               </button>
             </div>
           </div>
@@ -725,7 +835,14 @@ export default function Clients() {
         <div className="modal-overlay" onClick={() => setShowTrashModal(false)}>
           <div className="modal-content trash-modal" onClick={e => e.stopPropagation()}>
             <div className="trash-header">
-              <h2>Trash (Deleted Clients)</h2>
+              <div className="trash-header-top">
+                <h2>Trash (Deleted Clients)</h2>
+                {allTrash.length > 0 && (
+                  <button className="btn btn-sm btn-danger" onClick={emptyTrash}>
+                    <Trash2 size={12} /> Empty Bin
+                  </button>
+                )}
+              </div>
               <p className="text-muted text-sm">Deleted clients are kept for 30 days before permanent deletion.</p>
             </div>
             {allTrash.length === 0 ? (

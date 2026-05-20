@@ -262,9 +262,16 @@
   margin-bottom: 20px;
 }
 
+.trash-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
 .trash-header h2 {
   font-size: 20px;
-  margin-bottom: 4px;
 }
 
 .trash-list {
@@ -391,4 +398,92 @@
 
 .btn-danger-outline:hover {
   background: #fef2f2;
+}
+
+/* ── Bulk Selection ── */
+.checkbox-cell {
+  width: 40px;
+  min-width: 40px;
+  text-align: center;
+  padding: 8px 4px !important;
+}
+
+.row-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--info);
+}
+
+.row-selected {
+  background: rgba(59, 130, 246, 0.06) !important;
+}
+
+.row-selected:hover {
+  background: rgba(59, 130, 246, 0.1) !important;
+}
+
+/* ── Bulk Toolbar ── */
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  gap: 12px;
+  animation: bulk-slide-in 0.2s ease;
+}
+
+@keyframes bulk-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.bulk-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-counter {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.bulk-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Bulk Delete Modal ── */
+.bulk-delete-list {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.bulk-delete-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.bulk-delete-item .font-medium {
+  color: var(--text-heading);
 }
