@@ -14,75 +14,29 @@ export const AppContext = createContext();
 
 const MONTH_KEYS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-const initialClientsData = [
-  { businessName: 'Aruba Palm Realtors', onboardingDate: '2025-08-01', monthlyPrice: 350, paymentMethod: 'Stripe', paymentDueDay: 1 },
-  { businessName: 'Sunny Ice Cream Truck', onboardingDate: '2026-02-04', monthlyPrice: 256, paymentMethod: 'Stripe', paymentDueDay: 4 },
-  { businessName: 'Montauk Hat', onboardingDate: '2025-11-05', monthlyPrice: 150, paymentMethod: 'Stripe', paymentDueDay: 5 },
-  { businessName: 'G&G Exterminating', onboardingDate: '2025-12-06', monthlyPrice: 500, paymentMethod: 'Stripe', paymentDueDay: 6 },
-  { businessName: 'Superstars Roofing', onboardingDate: '2026-04-07', monthlyPrice: 200, paymentMethod: 'Stripe', paymentDueDay: 7 },
-  { businessName: 'Kirkwood Trading Company', onboardingDate: '2026-04-08', monthlyPrice: 500, paymentMethod: 'Stripe', paymentDueDay: 8 },
-  { businessName: 'Rawmantic Chocolate', onboardingDate: '2025-12-10', monthlyPrice: 1100, paymentMethod: 'Stripe', paymentDueDay: 10 },
-  { businessName: 'Windows on the Lake', onboardingDate: '2026-03-15', monthlyPrice: 700, paymentMethod: 'Stripe', paymentDueDay: 15 },
-  { businessName: 'Excellence Janitorial Svcs', onboardingDate: '2025-09-15', monthlyPrice: 500, paymentMethod: 'Stripe', paymentDueDay: 15 },
-  { businessName: 'THE VILLAGES REALTOR', onboardingDate: '2026-04-16', monthlyPrice: 800, paymentMethod: 'Stripe', paymentDueDay: 16 },
-  { businessName: 'Sublime Cleaning', onboardingDate: '2026-03-17', monthlyPrice: 300, paymentMethod: 'Stripe', paymentDueDay: 17 },
-  { businessName: 'Centex Security Cameras', onboardingDate: '2026-02-20', monthlyPrice: 750, paymentMethod: 'Stripe', paymentDueDay: 20 },
-  { businessName: 'Alexandria Gifts Inc', onboardingDate: '2026-01-29', monthlyPrice: 300, paymentMethod: 'Stripe', paymentDueDay: 29 },
-  { businessName: 'Perfect Plastic Cards', onboardingDate: '2025-06-30', monthlyPrice: 394, paymentMethod: 'Stripe', paymentDueDay: 30 }
-];
-
-function createMonthlyRecord(client, overrides = {}) {
+function createMonthlyRecord(recordData, overrides = {}) {
+  const id = recordData.id || uuidv4();
   return {
-    id: uuidv4(),
-    businessName: client.businessName || '',
-    contactPerson: client.contactPerson || '',
-    onboardingDate: client.onboardingDate || '',
-    monthlyPrice: client.monthlyPrice || 0,
-    paymentMethod: client.paymentMethod || 'Stripe',
-    paymentDueDay: client.paymentDueDay || 1,
-    contractEndDate: client.contractEndDate || '',
-    notes: client.notes || '',
-    status: 'Active',
-    statusDate: '',
-    statusNote: 'None',
-    paymentReceived: 0,
-    refundAmount: 0,
-    chargebackAmount: 0,
-    isDeleted: false,
-    deletedAt: null,
-    deletedReason: '',
+    id,
+    businessName: recordData.businessName || '',
+    contactPerson: recordData.contactPerson || '',
+    onboardingDate: recordData.onboardingDate || '',
+    monthlyPrice: recordData.monthlyPrice || 0,
+    paymentMethod: recordData.paymentMethod || 'Stripe',
+    paymentDueDay: recordData.paymentDueDay || 1,
+    contractEndDate: recordData.contractEndDate || '',
+    notes: recordData.notes || '',
+    status: recordData.status || 'Active',
+    statusDate: recordData.statusDate || '',
+    statusNote: recordData.statusNote || 'None',
+    paymentReceived: recordData.paymentReceived || 0,
+    refundAmount: recordData.refundAmount || 0,
+    chargebackAmount: recordData.chargebackAmount || 0,
+    isDeleted: recordData.isDeleted || false,
+    deletedAt: recordData.deletedAt || null,
+    deletedReason: recordData.deletedReason || '',
     ...overrides
   };
-}
-
-function createInitialMonthlyRecords() {
-  const records = initialClientsData.map(c => createMonthlyRecord(c));
-  return { '2026-04': records };
-}
-
-function migrateFromOldLocalStorageFormat() {
-  try {
-    const oldClients = JSON.parse(localStorage.getItem('profitpilot_clients'));
-    if (!oldClients || !Array.isArray(oldClients)) return null;
-    const oldStatusHistory = JSON.parse(localStorage.getItem('profitpilot_clientStatusHistory')) || [];
-    const oldPayments = JSON.parse(localStorage.getItem('profitpilot_payments')) || [];
-    const records = oldClients.map(client => {
-      const statusEntry = oldStatusHistory.find(h => h.clientId === client.id && h.month === '04' && h.year === '2026') ||
-        oldStatusHistory.find(h => h.clientId === client.id) || {};
-      const paymentEntry = oldPayments.find(p => p.clientId === client.id && p.month === '04' && p.year === '2026') || {};
-      return createMonthlyRecord(client, {
-        status: statusEntry.status || 'Active',
-        statusDate: statusEntry.statusDate || '',
-        statusNote: statusEntry.statusNote || 'None',
-        paymentReceived: paymentEntry.receivedAmount || 0,
-        refundAmount: paymentEntry.refundAmount || 0,
-        chargebackAmount: paymentEntry.chargebackAmount || 0
-      });
-    });
-    return { '2026-04': records };
-  } catch {
-    return null;
-  }
 }
 
 function findPreviousMonthKey(records, targetMonth, targetYear) {
@@ -115,34 +69,7 @@ function cleanupExpiredTrash(records) {
   return records;
 }
 
-const initialExpenses = [
-  { id: uuidv4(), name: 'Salaries', amount: 294850, category: 'Salaries', frequency: 'Monthly Recurring', date: '2026-04-01', status: 'Paid', month: '04', year: '2026' },
-  { id: uuidv4(), name: 'Office & Rent', amount: 83214, category: 'Office & Rent', frequency: 'Monthly Recurring', date: '2026-04-01', status: 'Paid', month: '04', year: '2026' },
-  { id: uuidv4(), name: 'Tools & Software', amount: 10421, category: 'Tools & Software', frequency: 'Monthly Recurring', date: '2026-04-01', status: 'Paid', month: '04', year: '2026' },
-  { id: uuidv4(), name: 'Data & Hosting', amount: 26121, category: 'Data & Hosting', frequency: 'Monthly Recurring', date: '2026-04-01', status: 'Paid', month: '04', year: '2026' },
-  { id: uuidv4(), name: 'Compliance/Legal', amount: 17807, category: 'Compliance & Legal', frequency: 'Monthly Recurring', date: '2026-04-01', status: 'Paid', month: '04', year: '2026' },
-  { id: uuidv4(), name: 'Miscellaneous', amount: 389, category: 'Miscellaneous', frequency: 'Monthly Recurring', date: '2026-04-01', status: 'Paid', month: '04', year: '2026' }
-];
 
-const preloadedTeam = [
-  { id: uuidv4(), name: 'Sidra', team: 'Email', role: 'Email Marketing', monthlySalary: 11000 },
-  { id: uuidv4(), name: 'Nimra', team: 'Email', role: 'Email Marketing', monthlySalary: 11000 },
-  { id: uuidv4(), name: 'Sandeep Rana', team: 'Email', role: 'Email Marketing', monthlySalary: 27000 },
-  { id: uuidv4(), name: 'Deepak Mishra', team: 'Email', role: 'Email Marketing', monthlySalary: 25000 },
-  { id: uuidv4(), name: 'Dinesh', team: 'Email', role: 'Email Marketing', monthlySalary: 20000 },
-  { id: uuidv4(), name: 'Deepanshu', team: 'Email', role: 'Email Marketing', monthlySalary: 25000 },
-  { id: uuidv4(), name: 'Jahid', team: 'Email', role: 'Email Marketing', monthlySalary: 35000 },
-  { id: uuidv4(), name: 'Rahul', team: 'Email', role: 'Email Marketing', monthlySalary: 20000 },
-  { id: uuidv4(), name: 'Lavanya', team: 'Day', role: 'HR Executive', monthlySalary: 18000 },
-  { id: uuidv4(), name: 'Rohan', team: 'Day', role: 'SEO Intern', monthlySalary: 15000 },
-  { id: uuidv4(), name: 'Harsh', team: 'Day', role: 'SEO Executive', monthlySalary: 30000 },
-  { id: uuidv4(), name: 'Vikram', team: 'Day', role: 'Graphic + Video', monthlySalary: 27000 },
-  { id: uuidv4(), name: 'Riya', team: 'Day', role: 'SEO Intern', monthlySalary: 10000 },
-  { id: uuidv4(), name: 'Kartik', team: 'Day', role: 'Developer', monthlySalary: 38000 },
-  { id: uuidv4(), name: 'Saumya', team: 'Day', role: 'Content Writer', monthlySalary: 25000 },
-  { id: uuidv4(), name: 'Pankaj', team: 'Night', role: 'Project Manager', monthlySalary: 45000 },
-  { id: uuidv4(), name: 'Anshika', team: 'Night', role: 'Intern', monthlySalary: 4000 }
-];
 
 function loadFromLS(key, defaultData) {
   try {
@@ -160,9 +87,9 @@ export const AppProvider = ({ children }) => {
   const [currentMonth, setCurrentMonth] = useState('04');
   const [currentYear, setCurrentYear] = useState('2026');
 
-  const [monthlyRecords, setMonthlyRecords] = useState(createInitialMonthlyRecords);
-  const [expenses, setExpenses] = useState(initialExpenses);
-  const [team, setTeam] = useState(preloadedTeam);
+  const [monthlyRecords, setMonthlyRecords] = useState({});
+  const [expenses, setExpenses] = useState([]);
+  const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
 
   useEffect(() => {
@@ -220,12 +147,11 @@ export const AppProvider = ({ children }) => {
       if (saved) {
         setMonthlyRecords(cleanupExpiredTrash(saved));
       } else {
-        const migrated = migrateFromOldLocalStorageFormat();
-        setMonthlyRecords(migrated || createInitialMonthlyRecords());
+        setMonthlyRecords({});
       }
 
-      setExpenses(loadFromLS('profitpilot_expenses', initialExpenses));
-      setTeam(loadFromLS('profitpilot_team', preloadedTeam));
+      setExpenses(loadFromLS('profitpilot_expenses', []));
+      setTeam(loadFromLS('profitpilot_team', []));
       setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
     }
 
