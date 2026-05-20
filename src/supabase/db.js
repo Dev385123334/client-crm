@@ -7,8 +7,6 @@ function mapRecordToDB(rec) {
     month: rec._month,
     business_name: rec.businessName,
     contact_person: rec.contactPerson || '',
-    phone: rec.phone || '',
-    email: rec.email || '',
     onboarding_date: rec.onboardingDate || '',
     monthly_price: rec.monthlyPrice || 0,
     payment_method: rec.paymentMethod || 'Stripe',
@@ -23,8 +21,7 @@ function mapRecordToDB(rec) {
     chargeback_amount: rec.chargebackAmount || 0,
     is_deleted: rec.isDeleted || false,
     deleted_at: rec.deletedAt || null,
-    deleted_reason: rec.deletedReason || '',
-    updated_at: new Date().toISOString()
+    deleted_reason: rec.deletedReason || ''
   };
 }
 
@@ -126,10 +123,11 @@ export async function saveMonthlyRecords(records) {
     }
   }
   if (allRows.length === 0) return;
-  await supabase.from('monthly_client_records').upsert(allRows, {
+  const { error } = await supabase.from('monthly_client_records').upsert(allRows, {
     onConflict: 'id',
     ignoreDuplicates: false
   });
+  if (error) console.error('saveMonthlyRecords error:', error);
 }
 
 export async function loadExpenses() {

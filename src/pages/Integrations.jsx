@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { parseGoogleSheetDate, parseUSDAmount } from '../utils/helpers';
 import { Link2, RefreshCw, Clock, Pause, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
@@ -26,22 +26,23 @@ export default function Integrations() {
   const [expenseSheet, setExpenseSheet] = useState({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
   const [syncFrequency, setSyncFrequency] = useState(30);
   const [setupStep, setSetupStep] = useState(null);
+  const initialized = useRef(false);
 
   useEffect(() => {
     const saved = loadFromLS('profitpilot_clientSheet', null);
+    const savedExp = loadFromLS('profitpilot_expenseSheet', null);
     if (saved) setClientSheet(saved);
+    if (savedExp) setExpenseSheet(savedExp);
+    initialized.current = true;
   }, []);
 
   useEffect(() => {
-    const saved = loadFromLS('profitpilot_expenseSheet', null);
-    if (saved) setExpenseSheet(saved);
-  }, []);
-
-  useEffect(() => {
+    if (!initialized.current) return;
     localStorage.setItem('profitpilot_clientSheet', JSON.stringify(clientSheet));
   }, [clientSheet]);
 
   useEffect(() => {
+    if (!initialized.current) return;
     localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(expenseSheet));
   }, [expenseSheet]);
 
@@ -116,6 +117,8 @@ export default function Integrations() {
           });
           imported++;
         }
+
+        await new Promise(r => setTimeout(r, 800));
 
         addLog(label, `Synced ${imported} clients (${skipped} rows skipped)`, 'success');
       } else {
