@@ -7,6 +7,8 @@ function mapRecordToDB(rec) {
     month: rec._month,
     business_name: rec.businessName,
     contact_person: rec.contactPerson || '',
+    phone: rec.phone || '',
+    email: rec.email || '',
     onboarding_date: rec.onboardingDate || '',
     monthly_price: rec.monthlyPrice || 0,
     payment_method: rec.paymentMethod || 'Stripe',
@@ -84,28 +86,8 @@ export async function loadMonthlyRecords() {
   const { data, error } = await supabase.from('monthly_client_records').select('*');
   if (error || !data) return null;
 
-  const seen = new Map();
-  const duplicateIds = [];
-  const unique = [];
-
-  data.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-  for (const row of data) {
-    const key = `${row.year}|${row.month}|${row.business_name}`;
-    if (seen.has(key)) {
-      duplicateIds.push(row.id);
-    } else {
-      seen.set(key, true);
-      unique.push(row);
-    }
-  }
-
-  if (duplicateIds.length > 0) {
-    await supabase.from('monthly_client_records').delete().in('id', duplicateIds);
-  }
-
   const grouped = {};
-  for (const row of unique) {
+  for (const row of data) {
     const key = `${row.year}-${row.month}`;
     if (!grouped[key]) grouped[key] = [];
     grouped[key].push(mapDBToRecord(row));
@@ -127,7 +109,7 @@ export async function saveMonthlyRecords(records) {
     onConflict: 'id',
     ignoreDuplicates: false
   });
-  if (error) console.error('saveMonthlyRecords error:', error);
+  if (error) throw new Error(`Failed to save clients to database: ${error.message}`);
 }
 
 export async function loadExpenses() {

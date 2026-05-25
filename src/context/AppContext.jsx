@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { isSupabaseConfigured } from '../supabase/client';
 import {
@@ -90,12 +90,16 @@ export const AppProvider = ({ children }) => {
   const [currentYear, setCurrentYear] = useState('2026');
 
   const [monthlyRecords, setMonthlyRecords] = useState({});
+  const monthlyRecordsRef = useRef(monthlyRecords);
+  useEffect(() => { monthlyRecordsRef.current = monthlyRecords; }, [monthlyRecords]);
   const [expenses, setExpenses] = useState([]);
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
 
   useEffect(() => {
     async function init() {
+      loadFromLocalStorage();
+
       if (isSupabaseConfigured()) {
         const [settings, records, exp, tm, logs] = await Promise.all([
           loadSettings(),
@@ -105,38 +109,31 @@ export const AppProvider = ({ children }) => {
           loadSyncLogs()
         ]);
 
-        const hasSupabaseData = settings || (records && Object.keys(records).length > 0);
+        if (settings) {
+          setExchangeRate(settings.exchangeRate);
+          setProfitGoal(settings.profitGoal);
+          setCurrencyView(settings.currencyView);
+        }
 
-        if (hasSupabaseData) {
-          if (settings) {
-            setExchangeRate(settings.exchangeRate);
-            setProfitGoal(settings.profitGoal);
-            setCurrencyView(settings.currencyView);
-          }
-          if (records) {
-            setMonthlyRecords(cleanupExpiredTrash(records));
-          }
-          if (exp) setExpenses(exp);
-          if (tm) setTeam(tm);
-          if (logs) setSyncLogs(logs);
-        } else {
+        const supabaseHasRecords = records && Object.keys(records).length > 0;
+        const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
+        const localHasRecords = localRecords && Object.keys(localRecords).length > 0;
+
+        if (supabaseHasRecords) {
+          setMonthlyRecords(cleanupExpiredTrash(records));
+        } else if (!localHasRecords) {
           const migrated = await migrateFromLocalStorage();
           if (migrated) {
-            const [s2, r2, e2, t2, l2] = await Promise.all([
-              loadSettings(), loadMonthlyRecords(), loadExpenses(), loadTeam(), loadSyncLogs()
-            ]);
-            if (s2) { setExchangeRate(s2.exchangeRate); setProfitGoal(s2.profitGoal); setCurrencyView(s2.currencyView); }
+            const r2 = await loadMonthlyRecords();
             if (r2) setMonthlyRecords(cleanupExpiredTrash(r2));
-            if (e2) setExpenses(e2);
-            if (t2) setTeam(t2);
-            if (l2) setSyncLogs(l2);
-          } else {
-            loadFromLocalStorage();
           }
         }
-      } else {
-        loadFromLocalStorage();
+
+        if (exp && exp.length > 0) setExpenses(exp);
+        if (tm && tm.length > 0) setTeam(tm);
+        if (logs) setSyncLogs(logs);
       }
+
       setDataReady(true);
     }
 
@@ -174,10 +171,11 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     if (!dataReady) return;
     const timer = setTimeout(() => {
+      localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(monthlyRecords));
       if (isSupabaseConfigured()) {
-        saveMonthlyRecords(monthlyRecords);
-      } else {
-        localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(monthlyRecords));
+        saveMonthlyRecords(monthlyRecords).catch(err => {
+          console.error('Supabase save failed (data preserved in localStorage):', err.message);
+        });
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -336,6 +334,14 @@ export const AppProvider = ({ children }) => {
     ensureMonthExists(currentMonth, currentYear);
   }, [currentMonth, currentYear, ensureMonthExists]);
 
+  const saveRecordsNow = useCallback(async () => {
+    const records = monthlyRecordsRef.current;
+    localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(records));
+    if (isSupabaseConfigured()) {
+      await saveMonthlyRecords(records);
+    }
+  }, []);
+
   const currentMonthRecords = (monthlyRecords[monthKey] || []).filter(r => !r.isDeleted);
   const currentMonthActive = currentMonthRecords.filter(r => r.status === 'Active');
   const currentMonthCancelled = currentMonthRecords.filter(r => r.status === 'Cancelled');
@@ -367,6 +373,7 @@ export const AppProvider = ({ children }) => {
       restoreRecord,
       permanentlyDeleteRecord,
       ensureMonthExists,
+      saveRecordsNow,
       monthKey,
       expenses, setExpenses,
       team, setTeam,

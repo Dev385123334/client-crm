@@ -20,7 +20,7 @@ function resolveSheetUrl(url) {
 }
 
 export default function Integrations() {
-  const { syncLogs, setSyncLogs, addRecordToMonth } = useContext(AppContext);
+  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow } = useContext(AppContext);
 
   const [clientSheet, setClientSheet] = useState({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
   const [expenseSheet, setExpenseSheet] = useState({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
@@ -119,6 +119,12 @@ export default function Integrations() {
         }
 
         await new Promise(r => setTimeout(r, 800));
+
+        try {
+          await saveRecordsNow();
+        } catch (saveErr) {
+          throw new Error(`Data was parsed but failed to save to database: ${saveErr.message}`, { cause: saveErr });
+        }
 
         addLog(label, `Synced ${imported} clients (${skipped} rows skipped)`, 'success');
       } else {
