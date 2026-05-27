@@ -1,13 +1,13 @@
-import React, { useContext, useState, useRef } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { EXPENSE_CATEGORIES, categorizeExpense, parseINRAmount } from '../utils/helpers';
-import { Plus, Upload, Trash2, Edit3, Filter, Undo2 } from 'lucide-react';
+import { Plus, Upload, Trash2, Edit3, Filter, Undo2, Archive, RotateCcw, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
 import './Expenses.css';
 
 export default function Expenses() {
-  const { expenses, setExpenses, currentMonth, currentYear, formatINR } = useContext(AppContext);
+  const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR } = useContext(AppContext);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editExpense, setEditExpense] = useState(null);
@@ -35,15 +35,14 @@ export default function Expenses() {
     setEditExpense(exp); setShowAddModal(true);
   };
   const saveExpense = () => {
-    if (!form.name || !form.amount) return;
+    if (!form.name || form.amount === '' || form.amount === null || form.amount === undefined) return;
     if (editExpense) {
-      setExpenses(prev => prev.map(e => e.id === editExpense.id ? { ...e, name: form.name, amount: parseFloat(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes } : e));
+      setExpenses(prev => prev.map(e => e.id === editExpense.id ? { ...e, name: form.name, amount: parseINRAmount(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes } : e));
     } else {
-      setExpenses(prev => [...prev, { id: uuidv4(), name: form.name, amount: parseFloat(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes, month: currentMonth, year: currentYear }]);
+      setExpenses(prev => [...prev, { id: uuidv4(), name: form.name, amount: parseINRAmount(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes, month: currentMonth, year: currentYear }]);
     }
     setShowAddModal(false);
   };
-  const deleteExpense = (id) => { if (confirm('Delete this expense?')) setExpenses(prev => prev.filter(e => e.id !== id)); };
 
   const handleImportFile = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -80,14 +79,127 @@ export default function Expenses() {
     Papa.parse(file, { header: false, skipEmptyLines: true, complete: (results) => { let data = results.data; if (data[0] && isNaN(parseINRAmount(data[0][2]))) data = data.slice(1); setImportPreview(data); setShowImportModal(true); } });
   };
 
+  // ── Selection & Bulk Actions ──
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [deletedExpenses, setDeletedExpenses] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('profitpilot_deletedExpenses') || '[]'); }
+    catch { return []; }
+  });
+  const [showTrashModal, setShowTrashModal] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('profitpilot_deletedExpenses', JSON.stringify(deletedExpenses));
+  }, [deletedExpenses]);
+
+  // ── Undo ──
+  const [undoData, setUndoData] = useState(null);
+  const [undoRemaining, setUndoRemaining] = useState(0);
+
+  useEffect(() => {
+    if (undoData && undoRemaining > 0) {
+      const id = setInterval(() => {
+        setUndoRemaining(prev => {
+          if (prev <= 1) { clearInterval(id); setUndoData(null); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(id);
+    }
+  }, [undoData, undoRemaining]);
+
+  const handleUndo = () => {
+    if (!undoData) return;
+    setExpenses(prev => [...prev, ...undoData.expenses]);
+    setDeletedExpenses(prev => prev.filter(e => !undoData.ids.has(e.id)));
+    setUndoData(null);
+    setUndoRemaining(0);
+  };
+
+  const isAllSelected = filtered.length > 0 && filtered.every(e => selectedIds.has(e.id));
+  const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(e => e.id)));
+    }
+  };
+
+  const confirmBulkDelete = () => {
+    const toDelete = filtered.filter(e => selectedIds.has(e.id));
+    const now = new Date().toISOString();
+    const deleted = toDelete.map(e => ({ ...e, deletedAt: now }));
+    setDeletedExpenses(prev => [...prev, ...deleted]);
+    setExpenses(prev => prev.filter(e => !selectedIds.has(e.id)));
+    setUndoData({ expenses: deleted, ids: new Set(deleted.map(e => e.id)) });
+    setUndoRemaining(10);
+    setSelectedIds(new Set());
+    setShowBulkDeleteModal(false);
+  };
+
+  const softDeleteExpense = (exp) => {
+    const now = new Date().toISOString();
+    const deleted = { ...exp, deletedAt: now };
+    setDeletedExpenses(prev => [...prev, deleted]);
+    setExpenses(prev => prev.filter(e => e.id !== exp.id));
+    setUndoData({ expenses: [deleted], ids: new Set([deleted.id]) });
+    setUndoRemaining(10);
+  };
+
+  const restoreExpense = (exp) => {
+    setExpenses(prev => [...prev, { ...exp, deletedAt: undefined }]);
+    setDeletedExpenses(prev => prev.filter(e => e.id !== exp.id));
+  };
+
+  const permanentlyDeleteExpense = (id) => {
+    if (!confirm('Permanently delete this expense? This cannot be undone.')) return;
+    deleteExpenses([id]);
+    setDeletedExpenses(prev => prev.filter(e => e.id !== id));
+  };
+
+  const emptyBin = () => {
+    if (deletedExpenses.length === 0) return;
+    if (!confirm(`Permanently delete all ${deletedExpenses.length} deleted expenses? This cannot be undone.`)) return;
+    const ids = deletedExpenses.map(e => e.id);
+    deleteExpenses(ids);
+    setDeletedExpenses([]);
+  };
+
+  const trashCount = deletedExpenses.length;
+
+  const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
+
   return (
     <div className="expenses-page">
+      {/* Undo Toast */}
+      {undoData && (
+        <div className="undo-toast">
+          <span>{undoData.expenses.length > 1 ? `${undoData.expenses.length} expenses moved to trash.` : 'Expense moved to trash.'}</span>
+          <button className="undo-btn" onClick={handleUndo}>Undo ({undoRemaining}s)</button>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
           <h1 className="page-title">Expense Manager</h1>
           <p className="page-subtitle">Track and manage all business expenses in INR</p>
         </div>
         <div className="header-actions">
+          {trashCount > 0 && (
+            <button className="btn btn-secondary" onClick={() => setShowTrashModal(true)} style={{ borderColor: '#f59e0b', color: '#b45309' }}>
+              <Archive size={14} /> View Trash ({trashCount})
+            </button>
+          )}
           {importHistory.length > 0 && <button className="btn btn-secondary" onClick={undoLastImport}><Undo2 size={14} /> Undo Import</button>}
           <button className="btn btn-secondary" onClick={() => fileInputRef.current.click()}><Upload size={14} /> Import CSV</button>
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImportFile} />
@@ -128,13 +240,57 @@ export default function Expenses() {
         </div>
       </div>
 
+      {/* Bulk Selection Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="bulk-toolbar">
+          <div className="bulk-toolbar-left">
+            <span className="bulk-counter">{selectedIds.size} expense{selectedIds.size > 1 ? 's' : ''} selected</span>
+          </div>
+          <div className="bulk-toolbar-actions">
+            <button className="btn btn-sm btn-secondary" onClick={toggleSelectAll}>
+              {isAllSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            <button className="btn btn-sm btn-danger" onClick={() => setShowBulkDeleteModal(true)}>
+              <Trash2 size={14} /> Delete Selected ({selectedIds.size})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table className="table">
-          <thead><tr><th>Date</th><th>Expense Name</th><th>Category</th><th>Amount</th><th>Frequency</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead>
+            <tr>
+              <th className="checkbox-cell">
+                <input
+                  type="checkbox"
+                  className="row-checkbox"
+                  checked={isAllSelected}
+                  ref={el => { if (el) el.indeterminate = isIndeterminate; }}
+                  onChange={toggleSelectAll}
+                />
+              </th>
+              <th>Date</th>
+              <th>Expense Name</th>
+              <th>Category</th>
+              <th>Amount</th>
+              <th>Frequency</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
-            {filtered.sort((a, b) => b.date.localeCompare(a.date)).map(exp => (
-              <tr key={exp.id}>
+            {sorted.map(exp => (
+              <tr key={exp.id} className={selectedIds.has(exp.id) ? 'row-selected' : ''}>
+                <td className="checkbox-cell">
+                  <input
+                    type="checkbox"
+                    className="row-checkbox"
+                    checked={selectedIds.has(exp.id)}
+                    onChange={() => toggleSelectOne(exp.id)}
+                  />
+                </td>
                 <td>{exp.date.split('-').reverse().join('/')}</td>
                 <td className="font-medium">{exp.name}</td>
                 <td><span className="badge badge-neutral">{exp.category}</span></td>
@@ -144,15 +300,100 @@ export default function Expenses() {
                 <td>
                   <div className="flex gap-2">
                     <button className="btn-icon" onClick={() => openEdit(exp)}><Edit3 size={14} /></button>
-                    <button className="btn-icon" onClick={() => deleteExpense(exp.id)} style={{ color: 'var(--danger)' }}><Trash2 size={14} /></button>
+                    <button className="btn-icon" onClick={() => softDeleteExpense(exp)} style={{ color: 'var(--danger)' }}><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
             ))}
-            {filtered.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No expenses for this month</td></tr>}
+            {sorted.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No expenses for this month</td></tr>}
           </tbody>
         </table>
       </div>
+
+      {/* Bulk Delete Modal */}
+      {showBulkDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowBulkDeleteModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <h2 style={{ marginBottom: 12 }}>Delete {selectedIds.size} expense{selectedIds.size > 1 ? 's' : ''}?</h2>
+            <p className="text-sm text-muted" style={{ marginBottom: 16 }}>
+              The following expenses will be moved to Trash. You can restore them anytime.
+            </p>
+            <div className="bulk-delete-list">
+              {sorted.filter(e => selectedIds.has(e.id)).map(e => (
+                <div key={e.id} className="bulk-delete-item">
+                  <span className="font-medium">{e.name}</span>
+                  <span className="text-muted text-sm">{formatINR(e.amount)} &middot; {e.date.split('-').reverse().join('/')}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowBulkDeleteModal(false)}>Cancel</button>
+              <button className="btn btn-danger" onClick={confirmBulkDelete}>
+                <Trash2 size={14} /> Delete {selectedIds.size} to Trash
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trash Modal */}
+      {showTrashModal && (
+        <div className="modal-overlay" onClick={() => setShowTrashModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 680 }}>
+            <div className="trash-header">
+              <div className="trash-header-top">
+                <h2>Trash (Deleted Expenses)</h2>
+                {deletedExpenses.length > 0 && (
+                  <button className="btn btn-sm btn-danger" onClick={emptyBin}>
+                    <Trash2 size={12} /> Empty Bin
+                  </button>
+                )}
+              </div>
+              <p className="text-muted text-sm">Deleted expenses are kept until you permanently delete them.</p>
+            </div>
+            {deletedExpenses.length === 0 ? (
+              <div className="card empty-state" style={{ margin: 0 }}>
+                <div className="empty-icon"><Archive size={32} /></div>
+                <h3>Trash is empty</h3>
+                <p className="text-muted text-sm">Deleted expenses will appear here.</p>
+              </div>
+            ) : (
+              <div className="trash-list">
+                {[...deletedExpenses].reverse().map(exp => (
+                  <div key={exp.id} className="trash-item">
+                    <div className="trash-item-main">
+                      <h4 className="trash-item-name">{exp.name}</h4>
+                      <div className="trash-item-meta">
+                        <span>Deleted on {new Date(exp.deletedAt).toLocaleDateString()}</span>
+                        <span className="trash-meta-sep">&middot;</span>
+                        <span>{formatINR(exp.amount)}</span>
+                        <span className="trash-meta-sep">&middot;</span>
+                        <span>{exp.date.split('-').reverse().join('/')}</span>
+                      </div>
+                      <div className="trash-item-details">
+                        <span>Category: {exp.category}</span>
+                        <span className="trash-meta-sep">&middot;</span>
+                        <span>Frequency: {exp.frequency}</span>
+                      </div>
+                    </div>
+                    <div className="trash-item-actions">
+                      <button className="btn btn-sm btn-success" onClick={() => restoreExpense(exp)}>
+                        <RotateCcw size={12} /> Restore
+                      </button>
+                      <button className="btn btn-sm btn-danger" onClick={() => permanentlyDeleteExpense(exp.id)}>
+                        <Trash2 size={12} /> Delete Forever
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-3" style={{ marginTop: 20, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowTrashModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {showAddModal && (
@@ -161,7 +402,7 @@ export default function Expenses() {
             <h2 style={{ marginBottom: 20 }}>{editExpense ? 'Edit Expense' : 'Add Expense'}</h2>
             <div className="input-group"><label className="input-label">Expense Name *</label><input className="input-field" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div className="input-group"><label className="input-label">Amount (₹) *</label><input className="input-field" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></div>
+              <div className="input-group"><label className="input-label">Amount (₹) *</label><input className="input-field" type="text" inputMode="numeric" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="e.g. 50000 or 50,000" /></div>
               <div className="input-group"><label className="input-label">Category</label><select className="input-field" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

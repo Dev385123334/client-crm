@@ -20,7 +20,7 @@ const MONTH_LABELS = [
 ];
 
 export default function Layout({ children }) {
-  const { exchangeRate, currentMonth, setCurrentMonth, currentYear, setCurrentYear } = useContext(AppContext);
+  const { currentMonth, setCurrentMonth, currentYear, setCurrentYear } = useContext(AppContext);
 
   const goMonth = (dir) => {
     let m = parseInt(currentMonth) + dir;
@@ -67,12 +67,6 @@ export default function Layout({ children }) {
             {/* Currency selector */}
             <div className="topbar-currency">
               <span className="currency-label">USD</span>
-            </div>
-
-            {/* Exchange rate */}
-            <div className="topbar-rate">
-              <span>1 USD = ₹</span>
-              <span className="rate-value">{exchangeRate}</span>
             </div>
 
             {/* Month nav */}

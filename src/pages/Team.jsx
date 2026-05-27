@@ -2,6 +2,7 @@ import React, { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Plus, Trash2, Edit3, Users } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { parseINRAmount } from '../utils/helpers';
 import './Team.css';
 
 export default function Team() {
@@ -19,9 +20,9 @@ export default function Team() {
   const openAdd = () => { setForm({ name: '', team: 'Day', role: '', monthlySalary: '' }); setEditMember(null); setShowModal(true); };
   const openEdit = (m) => { setForm({ name: m.name, team: m.team, role: m.role, monthlySalary: m.monthlySalary }); setEditMember(m); setShowModal(true); };
   const save = () => {
-    if (!form.name || !form.monthlySalary) return;
-    if (editMember) setTeam(prev => prev.map(m => m.id === editMember.id ? { ...m, ...form, monthlySalary: parseFloat(form.monthlySalary) } : m));
-    else setTeam(prev => [...prev, { id: uuidv4(), ...form, monthlySalary: parseFloat(form.monthlySalary) }]);
+    if (!form.name || form.monthlySalary === '' || form.monthlySalary === null || form.monthlySalary === undefined) return;
+    if (editMember) setTeam(prev => prev.map(m => m.id === editMember.id ? { ...m, ...form, monthlySalary: parseINRAmount(form.monthlySalary) } : m));
+    else setTeam(prev => [...prev, { id: uuidv4(), ...form, monthlySalary: parseINRAmount(form.monthlySalary) }]);
     setShowModal(false);
   };
   const remove = (id) => { if (confirm('Remove?')) setTeam(prev => prev.filter(m => m.id !== id)); };
@@ -86,7 +87,7 @@ export default function Team() {
               <div className="input-group"><label className="input-label">Team</label><select className="input-field" value={form.team} onChange={e => setForm({ ...form, team: e.target.value })}><option value="Email">Email</option><option value="Day">Day</option><option value="Night">Night</option></select></div>
               <div className="input-group"><label className="input-label">Role</label><input className="input-field" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} /></div>
             </div>
-            <div className="input-group"><label className="input-label">Monthly Salary (₹) *</label><input className="input-field" type="number" value={form.monthlySalary} onChange={e => setForm({ ...form, monthlySalary: e.target.value })} /></div>
+            <div className="input-group"><label className="input-label">Monthly Salary (₹) *</label><input className="input-field" type="text" inputMode="numeric" value={form.monthlySalary} onChange={e => setForm({ ...form, monthlySalary: e.target.value })} placeholder="e.g. 50000 or 50,000" /></div>
             <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end' }}><button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button><button className="btn btn-primary" onClick={save}>Save</button></div>
           </div>
         </div>

@@ -196,6 +196,12 @@ export async function saveSyncLogs(logs) {
   await supabase.from('sync_logs').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
 }
 
+export async function deleteExpensesFromDB(ids) {
+  if (!isSupabaseConfigured() || ids.length === 0) return;
+  const { error } = await supabase.from('expenses').delete().in('id', ids);
+  if (error) console.error('Failed to delete expenses from DB:', error);
+}
+
 export async function migrateFromLocalStorage() {
   if (!isSupabaseConfigured()) return false;
   const loadLS = (key, def) => {

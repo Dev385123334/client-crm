@@ -1,6 +1,7 @@
-import React, { useContext, useState, useEffect, useRef } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { parseGoogleSheetDate, parseUSDAmount } from '../utils/helpers';
+import { parseGoogleSheetDate, parseUSDAmount, parseINRAmount, categorizeExpense } from '../utils/helpers';
+import { v4 as uuidv4 } from 'uuid';
 import { Link2, RefreshCw, Clock, Pause, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
 import Papa from 'papaparse';
 import './Integrations.css';
@@ -19,30 +20,32 @@ function resolveSheetUrl(url) {
   return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
 }
 
-export default function Integrations() {
-  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow } = useContext(AppContext);
+function parseExpenseDate(dateStr) {
+  if (!dateStr) return null;
+  let parts = dateStr.split('/');
+  if (parts.length !== 3) parts = dateStr.split('-');
+  if (parts.length !== 3) return null;
+  let [d, m, y] = parts;
+  d = d.padStart(2, '0');
+  m = m.padStart(2, '0');
+  if (y.length === 2) y = '20' + y;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return `${y}-${m}-${d}`;
+}
 
-  const [clientSheet, setClientSheet] = useState({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
-  const [expenseSheet, setExpenseSheet] = useState({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
+export default function Integrations() {
+  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses } = useContext(AppContext);
+
+  const [clientSheet, setClientSheet] = useState(() => loadFromLS('profitpilot_clientSheet', { url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' }));
+  const [expenseSheet, setExpenseSheet] = useState(() => loadFromLS('profitpilot_expenseSheet', { url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' }));
   const [syncFrequency, setSyncFrequency] = useState(30);
   const [setupStep, setSetupStep] = useState(null);
-  const initialized = useRef(false);
 
   useEffect(() => {
-    const saved = loadFromLS('profitpilot_clientSheet', null);
-    const savedExp = loadFromLS('profitpilot_expenseSheet', null);
-    if (saved) setClientSheet(saved);
-    if (savedExp) setExpenseSheet(savedExp);
-    initialized.current = true;
-  }, []);
-
-  useEffect(() => {
-    if (!initialized.current) return;
     localStorage.setItem('profitpilot_clientSheet', JSON.stringify(clientSheet));
   }, [clientSheet]);
 
   useEffect(() => {
-    if (!initialized.current) return;
     localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(expenseSheet));
   }, [expenseSheet]);
 
@@ -87,7 +90,8 @@ export default function Integrations() {
 
       if (type === 'client') {
         let imported = 0, skipped = 0;
-        for (let i = 1; i < parsed.data.length; i++) {
+        const startRow = parseGoogleSheetDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
+        for (let i = startRow; i < parsed.data.length; i++) {
           const row = parsed.data[i];
           const dateRaw = String(row[0] || '').trim();
           const priceRaw = String(row[1] || '').trim();
@@ -128,16 +132,42 @@ export default function Integrations() {
 
         addLog(label, `Synced ${imported} clients (${skipped} rows skipped)`, 'success');
       } else {
-        let imported = 0, skipped = 0;
-        for (let i = 1; i < parsed.data.length; i++) {
+        let imported = 0, skipped = 0, errors = [];
+        const newExpenses = [];
+        const startRow = parseExpenseDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
+        for (let i = startRow; i < parsed.data.length; i++) {
           const row = parsed.data[i];
           const dateRaw = String(row[0] || '').trim();
           const name = String(row[1] || '').trim();
           const amountRaw = String(row[2] || '').trim();
-          if (!name || !dateRaw || !amountRaw) { skipped++; continue; }
+          if (!name || !amountRaw) { skipped++; continue; }
+          const amount = parseINRAmount(amountRaw);
+          if (!amount) { skipped++; continue; }
+          const isoDate = parseExpenseDate(dateRaw) || new Date().toISOString().slice(0, 10);
+          const month = isoDate.slice(5, 7);
+          const year = isoDate.slice(0, 4);
+          const isDup = expenses.some(e => e.date === isoDate && e.name === name && e.amount === amount);
+          if (isDup) { skipped++; continue; }
+          newExpenses.push({
+            id: uuidv4(),
+            name,
+            amount,
+            category: categorizeExpense(name),
+            frequency: 'Monthly Recurring',
+            date: isoDate,
+            status: 'Paid',
+            notes: '',
+            month,
+            year
+          });
           imported++;
         }
-        addLog(label, `Synced ${imported} expenses (${skipped} rows skipped). Expense import is active.`, 'success');
+        if (newExpenses.length > 0) {
+          setExpenses(prev => [...prev, ...newExpenses]);
+        }
+        addLog(label, imported > 0
+          ? `Imported ${imported} new expense${imported > 1 ? 's' : ''}${skipped > 0 ? ` (${skipped} duplicate${skipped > 1 ? 's' : ''} skipped)` : ''}`
+          : `All ${skipped} expense${skipped > 1 ? 's' : ''} already in system. No new data to import.`, imported > 0 ? 'success' : 'info');
       }
 
       setSheet(prev => ({

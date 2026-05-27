@@ -7,7 +7,8 @@ import {
   loadExpenses, saveExpenses,
   loadTeam, saveTeam,
   loadSyncLogs, saveSyncLogs,
-  migrateFromLocalStorage
+  migrateFromLocalStorage,
+  deleteExpensesFromDB
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -86,13 +87,19 @@ export const AppProvider = ({ children }) => {
   const [exchangeRate, setExchangeRate] = useState(83);
   const [profitGoal, setProfitGoal] = useState(200000);
   const [currencyView, setCurrencyView] = useState('USD');
-  const [currentMonth, setCurrentMonth] = useState('04');
-  const [currentYear, setCurrentYear] = useState('2026');
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const saved = loadFromLS('profitpilot_lastMonth', null);
+    return saved || String(new Date().getMonth() + 1).padStart(2, '0');
+  });
+  const [currentYear, setCurrentYear] = useState(() => {
+    const saved = loadFromLS('profitpilot_lastYear', null);
+    return saved || String(new Date().getFullYear());
+  });
 
-  const [monthlyRecords, setMonthlyRecords] = useState({});
+  const [monthlyRecords, setMonthlyRecords] = useState(() => loadFromLS('profitpilot_monthlyRecords', {}));
   const monthlyRecordsRef = useRef(monthlyRecords);
   useEffect(() => { monthlyRecordsRef.current = monthlyRecords; }, [monthlyRecords]);
-  const [expenses, setExpenses] = useState([]);
+  const [expenses, setExpenses] = useState(() => loadFromLS('profitpilot_expenses', []));
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
 
@@ -115,9 +122,10 @@ export const AppProvider = ({ children }) => {
           setCurrencyView(settings.currencyView);
         }
 
-        const supabaseHasRecords = records && Object.keys(records).length > 0;
         const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
         const localHasRecords = localRecords && Object.keys(localRecords).length > 0;
+
+        const supabaseHasRecords = records && Object.keys(records).length > 0;
 
         if (supabaseHasRecords) {
           setMonthlyRecords(cleanupExpiredTrash(records));
@@ -129,7 +137,9 @@ export const AppProvider = ({ children }) => {
           }
         }
 
-        if (exp && exp.length > 0) setExpenses(exp);
+        const localExpenses = loadFromLS('profitpilot_expenses', null);
+        const localHasExpenses = localExpenses && localExpenses.length > 0;
+        if (exp && exp.length > 0 && !localHasExpenses) setExpenses(exp);
         if (tm && tm.length > 0) setTeam(tm);
         if (logs) setSyncLogs(logs);
       }
@@ -238,6 +248,14 @@ export const AppProvider = ({ children }) => {
     const newRecord = createMonthlyRecord(recordData, { id: uuidv4() });
     setMonthlyRecords(prev => {
       const existing = prev[key] || [];
+      const dup = existing.findIndex(r =>
+        r.businessName === recordData.businessName && !r.isDeleted
+      );
+      if (dup >= 0) {
+        const updated = [...existing];
+        updated[dup] = { ...updated[dup], ...recordData };
+        return { ...prev, [key]: updated };
+      }
       return { ...prev, [key]: [...existing, newRecord] };
     });
     return newRecord;
@@ -331,8 +349,18 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('profitpilot_lastMonth', JSON.stringify(currentMonth));
+    localStorage.setItem('profitpilot_lastYear', JSON.stringify(currentYear));
+  }, [currentMonth, currentYear]);
+
+  useEffect(() => {
     ensureMonthExists(currentMonth, currentYear);
   }, [currentMonth, currentYear, ensureMonthExists]);
+
+  const deleteExpenses = useCallback(async (ids) => {
+    setExpenses(prev => prev.filter(e => !ids.includes(e.id)));
+    await deleteExpensesFromDB(ids);
+  }, []);
 
   const saveRecordsNow = useCallback(async () => {
     const records = monthlyRecordsRef.current;
@@ -375,7 +403,7 @@ export const AppProvider = ({ children }) => {
       ensureMonthExists,
       saveRecordsNow,
       monthKey,
-      expenses, setExpenses,
+      expenses, setExpenses, deleteExpenses,
       team, setTeam,
       syncLogs, setSyncLogs,
       convertToINR, formatUSD, formatINR

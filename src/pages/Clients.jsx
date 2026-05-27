@@ -1,7 +1,8 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES } from '../utils/helpers';
-import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive } from 'lucide-react';
+import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
+import FilterBar from '../components/FilterBar/FilterBar';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
 import './Clients.css';
@@ -14,7 +15,7 @@ export default function Clients() {
     softDeleteRecordFromAllMonths, restoreRecord, permanentlyDeleteRecord,
     getAllTrashRecords, getMonthlyRecords,
     currentMonth, currentYear, monthKey,
-    exchangeRate, currencyView, setCurrencyView,
+    exchangeRate, setExchangeRate, currencyView, setCurrencyView,
     convertToINR, formatUSD, formatINR
   } = useContext(AppContext);
 
@@ -26,7 +27,7 @@ export default function Clients() {
   const [editRecordId, setEditRecordId] = useState(null);
   const [sortBy, setSortBy] = useState('onboardingDate');
   const [sortDir, setSortDir] = useState('asc');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState({ search: '', status: null, dateRange: null, amount: null });
   const [importPreview, setImportPreview] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -80,6 +81,14 @@ export default function Clients() {
   const curMonthName = monthNames[parseInt(currentMonth)];
 
   const cashReceived = records.reduce((s, r) => s + ((r.paymentReceived || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
+  const [taxRate, setTaxRate] = useState(() => {
+    const saved = localStorage.getItem('profitpilot_taxRate');
+    return saved ? parseFloat(saved) : 0;
+  });
+  useEffect(() => {
+    localStorage.setItem('profitpilot_taxRate', JSON.stringify(taxRate));
+  }, [taxRate]);
+  const cashReceivedAfterTax = cashReceived * (1 - taxRate / 100);
 
   const upcomingCollections = activeRecords.map(r => {
     const dueDay = r.paymentDueDay || parseInt(r.onboardingDate.split('-')[2]) || 1;
@@ -127,8 +136,21 @@ export default function Clients() {
   };
 
   const sorted = [...records].filter(r => {
-    if (!searchQuery) return true;
-    return r.businessName.toLowerCase().includes(searchQuery.toLowerCase());
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      const searchable = [r.businessName, r.email, r.contactPerson, r.phone, r.notes].filter(Boolean).join(' ').toLowerCase();
+      if (!searchable.includes(q)) return false;
+    }
+    if (filters.status && filters.status.length > 0 && !filters.status.includes(r.status)) return false;
+    if (filters.dateRange) {
+      if (filters.dateRange.start && r.onboardingDate < filters.dateRange.start) return false;
+      if (filters.dateRange.end && r.onboardingDate > filters.dateRange.end) return false;
+    }
+    if (filters.amount) {
+      if (filters.amount.min != null && r.monthlyPrice < filters.amount.min) return false;
+      if (filters.amount.max != null && r.monthlyPrice > filters.amount.max) return false;
+    }
+    return true;
   }).sort((a, b) => {
     let valA, valB;
     if (sortBy === 'onboardingDate') { valA = a.onboardingDate; valB = b.onboardingDate; }
@@ -398,6 +420,40 @@ export default function Clients() {
         </div>
       )}
 
+      {/* Config Bar */}
+      <div className="config-bar">
+        <div className="config-bar__item">
+          <span className="config-bar__label">1 USD = ₹</span>
+          <input
+            className="config-bar__input"
+            type="number"
+            step="0.01"
+            value={exchangeRate}
+            onChange={e => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val) && val > 0) setExchangeRate(val);
+            }}
+          />
+        </div>
+        <div className="config-bar__divider" />
+        <div className="config-bar__item">
+          <span className="config-bar__label">Tax:</span>
+          <input
+            className="config-bar__input config-bar__input--sm"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={taxRate}
+            onChange={e => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val) && val >= 0 && val <= 100) setTaxRate(val);
+            }}
+          />
+          <span className="config-bar__label">%</span>
+        </div>
+      </div>
+
       {/* Stats Row */}
       <div className="stats-row">
         <div className="card stat-card">
@@ -406,8 +462,17 @@ export default function Clients() {
         </div>
         <div className="card stat-card" style={{ background: 'var(--success-bg)', borderColor: 'var(--success)' }}>
           <div className="stat-label" style={{ color: 'var(--success)' }}>Cash Received This Month</div>
-          <div className="stat-value">{formatUSD(cashReceived)} / {formatINR(convertToINR(cashReceived))}</div>
-          <div className="stat-sub">Net after refunds/chargebacks</div>
+          {taxRate > 0 ? (
+            <>
+              <div className="stat-value">{formatUSD(cashReceivedAfterTax)} / {formatINR(convertToINR(cashReceivedAfterTax))}</div>
+              <div className="stat-sub">After {taxRate}% tax deduction (gross: {formatUSD(cashReceived)})</div>
+            </>
+          ) : (
+            <>
+              <div className="stat-value">{formatUSD(cashReceived)} / {formatINR(convertToINR(cashReceived))}</div>
+              <div className="stat-sub">Net after refunds/chargebacks</div>
+            </>
+          )}
         </div>
         <div className="card stat-card" style={{ background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
           <div className="stat-label" style={{ color: 'var(--info)' }}>Current Month MRR</div>
@@ -471,50 +536,60 @@ export default function Clients() {
       <div className="card" style={{ marginBottom: 20 }}>
         <h3 className="mb-4 text-heading font-semibold text-lg">CLIENT STATUS (For {nextMonthName} onwards)</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-          <div style={{ border: '1px solid var(--success)', borderRadius: 'var(--radius-md)', padding: 16, background: 'var(--success-bg)' }}>
-            <h4 className="font-semibold text-success mb-3">ACTIVE CLIENTS (Will appear in {nextMonthName}):</h4>
-            <div className="flex flex-col gap-2">
-              {activeRecords.map(r => (
-                <div key={r.id} className="flex justify-between items-center text-sm">
-                  <span>&#10003; {r.businessName}</span>
-                  <span className="font-semibold">{formatUSD(r.monthlyPrice)}/mo</span>
+          <div className="status-column status-column--active">
+            <h4 className="status-column__title status-column__title--active">ACTIVE CLIENTS (Will appear in {nextMonthName}):</h4>
+            <div className="status-column__list">
+              {activeRecords.map((r, idx) => (
+                <div key={r.id} className="status-row">
+                  <div className="status-row__left">
+                    <span className="status-row__num">{idx + 1}</span>
+                    <span className="status-row__check">&#10003;</span>
+                    <span className="status-row__name">{r.businessName}</span>
+                  </div>
+                  <span className="status-row__price">{formatUSD(r.monthlyPrice)}/mo</span>
                 </div>
               ))}
               {activeRecords.length === 0 && <div className="text-sm text-muted">No active clients.</div>}
             </div>
-            <div className="mt-4 pt-3 border-top" style={{ borderTop: '1px solid rgba(22, 163, 74, 0.2)' }}>
-              <div className="flex justify-between items-center font-bold text-success">
-                <span>{nextMonthName} MRR Forecast:</span>
-                <span>{formatUSD(totalMRR)} ({activeCount} active clients)</span>
-              </div>
+            <div className="status-column__footer status-column__footer--active">
+              <span>{nextMonthName} MRR Forecast:</span>
+              <span>{formatUSD(totalMRR)} ({activeCount} active clients)</span>
             </div>
           </div>
 
-          <div style={{ border: '1px solid var(--danger)', borderRadius: 'var(--radius-md)', padding: 16, background: 'var(--danger-bg)' }}>
-            <h4 className="font-semibold text-danger mb-3">CANCELLED CLIENTS (Won't appear in {nextMonthName}):</h4>
-            <div className="flex flex-col gap-2">
+          <div className="status-column status-column--cancelled">
+            <h4 className="status-column__title status-column__title--cancelled">CANCELLED CLIENTS (Won't appear in {nextMonthName}):</h4>
+            <div className="status-column__list">
               {cancelledRecords.map(r => (
-                <div key={r.id} className="text-sm border-bottom pb-2 mb-1" style={{ borderBottom: '1px dashed rgba(220, 38, 38, 0.2)' }}>
-                  <div className="flex justify-between items-center font-semibold text-danger">
-                    <span>&#10007; {r.businessName}</span>
-                    <span>{formatUSD(r.monthlyPrice)}/mo</span>
+                <div key={r.id} className="status-row status-row--cancelled">
+                  <div className="status-row__left">
+                    <span className="status-row__cross">&#10007;</span>
+                    <span className="status-row__name status-row__name--cancelled">{r.businessName}</span>
                   </div>
-                  {r.statusDate && <div className="text-muted mt-1 text-xs">Cancelled: {formatDate(r.statusDate)}</div>}
-                  {r.statusNote && r.statusNote !== 'None' && <div className="text-muted text-xs">Note: &ldquo;{r.statusNote}&rdquo;</div>}
-                  {r.paymentReceived > 0 && <div className="text-muted text-xs mt-1">Payment Made: {formatUSD(r.paymentReceived)}</div>}
+                  <div className="status-row__right">
+                    <span className="status-row__price status-row__price--cancelled">{formatUSD(r.monthlyPrice)}/mo</span>
+                  </div>
+                  {r.statusDate || (r.statusNote && r.statusNote !== 'None') || r.paymentReceived > 0 ? (
+                    <div className="status-row__meta">
+                      {r.statusDate && <span>Cancelled: {formatDate(r.statusDate)}</span>}
+                      {r.statusNote && r.statusNote !== 'None' && <span>Note: &ldquo;{r.statusNote}&rdquo;</span>}
+                      {r.paymentReceived > 0 && <span>Payment Made: {formatUSD(r.paymentReceived)}</span>}
+                    </div>
+                  ) : null}
                 </div>
               ))}
               {cancelledRecords.length === 0 && <div className="text-sm text-muted">No cancelled clients.</div>}
             </div>
-            <div className="mt-4 pt-3 border-top" style={{ borderTop: '1px solid rgba(220, 38, 38, 0.2)' }}>
-              <div className="flex justify-between items-center font-bold text-danger">
-                <span>Revenue Lost:</span>
-                <span>-{formatUSD(revenueLost)}</span>
-              </div>
+            <div className="status-column__footer status-column__footer--cancelled">
+              <span>Revenue Lost:</span>
+              <span>-{formatUSD(revenueLost)}</span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Filter Bar */}
+      <FilterBar records={records} filters={filters} onFiltersChange={setFilters} />
 
       {/* Bulk Selection Toolbar */}
       {selectedIds.size > 0 && (
@@ -633,7 +708,7 @@ export default function Clients() {
                         <div className="flex items-center gap-2">
                           <span className={`badge badge-${ps.type}`}>{ps.emoji} {ps.label}</span>
                           {ps.label !== 'PAID' && (
-                            <button className="btn-icon" title="Mark as Paid" onClick={() => markAsPaid(record.id, record.monthlyPrice)}>
+                            <button className="btn-icon" title="Mark as Paid" onClick={e => { e.stopPropagation(); markAsPaid(record.id, record.monthlyPrice); }}>
                               <Check size={14} />
                             </button>
                           )}
