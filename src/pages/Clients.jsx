@@ -1,5 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
+import { AuthContext } from '../context/AuthContext';
 import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES } from '../utils/helpers';
 import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
 import FilterBar from '../components/FilterBar/FilterBar';
@@ -8,6 +9,9 @@ import Papa from 'papaparse';
 import './Clients.css';
 
 export default function Clients() {
+  const { userRole } = useContext(AuthContext);
+  const canDelete = userRole === 'admin';
+
   const {
     currentMonthRecords, currentMonthActive, currentMonthCancelled, currentMonthTrash,
     monthlyRecords,
@@ -606,9 +610,11 @@ export default function Clients() {
             <button className="btn btn-sm btn-secondary" onClick={toggleSelectAll}>
               {isAllSelected ? 'Deselect All' : 'Select All'}
             </button>
-            <button className="btn btn-sm btn-danger" onClick={() => setShowBulkDeleteModal(true)}>
-              <Trash2 size={14} /> Delete Selected ({selectedIds.size})
-            </button>
+            {canDelete && (
+              <button className="btn btn-sm btn-danger" onClick={() => setShowBulkDeleteModal(true)}>
+                <Trash2 size={14} /> Delete Selected ({selectedIds.size})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -732,9 +738,11 @@ export default function Clients() {
                         <button className="btn-icon" title="Edit" onClick={e => { e.stopPropagation(); openEditModal(record); }}>
                           <Edit3 size={14} />
                         </button>
-                        <button className="btn-icon" title="Delete" style={{ color: 'var(--danger)' }} onClick={e => { e.stopPropagation(); promptDelete(record); }}>
-                          <Trash2 size={14} />
-                        </button>
+                        {canDelete && (
+                          <button className="btn-icon" title="Delete" style={{ color: 'var(--danger)' }} onClick={e => { e.stopPropagation(); promptDelete(record); }}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -769,12 +777,16 @@ export default function Clients() {
             </p>
             <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button className="btn btn-secondary" onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); }}>Cancel</button>
-              <button className="btn btn-danger-outline" onClick={() => confirmDelete(true)} style={{ borderColor: '#dc2626', color: '#dc2626' }}>
-                <Trash2 size={14} /> Delete from All Months
-              </button>
-              <button className="btn btn-danger" onClick={() => confirmDelete(false)}>
-                <Trash2 size={14} /> Delete from {curMonthName} Only
-              </button>
+              {canDelete && (
+                <>
+                  <button className="btn btn-danger-outline" onClick={() => confirmDelete(true)} style={{ borderColor: '#dc2626', color: '#dc2626' }}>
+                    <Trash2 size={14} /> Delete from All Months
+                  </button>
+                  <button className="btn btn-danger" onClick={() => confirmDelete(false)}>
+                    <Trash2 size={14} /> Delete from {curMonthName} Only
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -798,9 +810,11 @@ export default function Clients() {
             </div>
             <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowBulkDeleteModal(false)}>Cancel</button>
-              <button className="btn btn-danger" onClick={confirmBulkDelete}>
-                <Trash2 size={14} /> Delete {selectedIds.size} to Trash
-              </button>
+              {canDelete && (
+                <button className="btn btn-danger" onClick={confirmBulkDelete}>
+                  <Trash2 size={14} /> Delete {selectedIds.size} to Trash
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -964,7 +978,7 @@ export default function Clients() {
             <div className="trash-header">
               <div className="trash-header-top">
                 <h2>Trash (Deleted Clients)</h2>
-                {allTrash.length > 0 && (
+                {canDelete && allTrash.length > 0 && (
                   <button className="btn btn-sm btn-danger" onClick={emptyTrash}>
                     <Trash2 size={12} /> Empty Bin
                   </button>
@@ -1022,13 +1036,15 @@ export default function Clients() {
                         }}>
                           <RotateCcw size={12} /> Restore to Cancelled
                         </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => {
-                          if (confirm(`Permanently delete "${tr.businessName}" from ${monthLabel} ${tr._year}? This cannot be undone.`)) {
-                            permanentlyDeleteRecord(tr.id, tr._month, tr._year);
-                          }
-                        }}>
-                          <Trash2 size={12} /> Delete Forever
-                        </button>
+                        {canDelete && (
+                          <button className="btn btn-sm btn-danger" onClick={() => {
+                            if (confirm(`Permanently delete "${tr.businessName}" from ${monthLabel} ${tr._year}? This cannot be undone.`)) {
+                              permanentlyDeleteRecord(tr.id, tr._month, tr._year);
+                            }
+                          }}>
+                            <Trash2 size={12} /> Delete Forever
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

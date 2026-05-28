@@ -1,5 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
+import { AuthContext } from '../context/AuthContext';
 import { EXPENSE_CATEGORIES, categorizeExpense, parseINRAmount } from '../utils/helpers';
 import { Plus, Upload, Trash2, Edit3, Filter, Undo2, Archive, RotateCcw, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,6 +8,9 @@ import Papa from 'papaparse';
 import './Expenses.css';
 
 export default function Expenses() {
+  const { userRole } = useContext(AuthContext);
+  const canDelete = userRole === 'admin';
+
   const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR } = useContext(AppContext);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -250,9 +254,11 @@ export default function Expenses() {
             <button className="btn btn-sm btn-secondary" onClick={toggleSelectAll}>
               {isAllSelected ? 'Deselect All' : 'Select All'}
             </button>
-            <button className="btn btn-sm btn-danger" onClick={() => setShowBulkDeleteModal(true)}>
-              <Trash2 size={14} /> Delete Selected ({selectedIds.size})
-            </button>
+            {canDelete && (
+              <button className="btn btn-sm btn-danger" onClick={() => setShowBulkDeleteModal(true)}>
+                <Trash2 size={14} /> Delete Selected ({selectedIds.size})
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -300,7 +306,7 @@ export default function Expenses() {
                 <td>
                   <div className="flex gap-2">
                     <button className="btn-icon" onClick={() => openEdit(exp)}><Edit3 size={14} /></button>
-                    <button className="btn-icon" onClick={() => softDeleteExpense(exp)} style={{ color: 'var(--danger)' }}><Trash2 size={14} /></button>
+                    {canDelete && <button className="btn-icon" onClick={() => softDeleteExpense(exp)} style={{ color: 'var(--danger)' }}><Trash2 size={14} /></button>}
                   </div>
                 </td>
               </tr>
@@ -328,9 +334,11 @@ export default function Expenses() {
             </div>
             <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowBulkDeleteModal(false)}>Cancel</button>
-              <button className="btn btn-danger" onClick={confirmBulkDelete}>
-                <Trash2 size={14} /> Delete {selectedIds.size} to Trash
-              </button>
+              {canDelete && (
+                <button className="btn btn-danger" onClick={confirmBulkDelete}>
+                  <Trash2 size={14} /> Delete {selectedIds.size} to Trash
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -343,7 +351,7 @@ export default function Expenses() {
             <div className="trash-header">
               <div className="trash-header-top">
                 <h2>Trash (Deleted Expenses)</h2>
-                {deletedExpenses.length > 0 && (
+                {canDelete && deletedExpenses.length > 0 && (
                   <button className="btn btn-sm btn-danger" onClick={emptyBin}>
                     <Trash2 size={12} /> Empty Bin
                   </button>
@@ -380,9 +388,11 @@ export default function Expenses() {
                       <button className="btn btn-sm btn-success" onClick={() => restoreExpense(exp)}>
                         <RotateCcw size={12} /> Restore
                       </button>
-                      <button className="btn btn-sm btn-danger" onClick={() => permanentlyDeleteExpense(exp.id)}>
-                        <Trash2 size={12} /> Delete Forever
-                      </button>
+                      {canDelete && (
+                        <button className="btn btn-sm btn-danger" onClick={() => permanentlyDeleteExpense(exp.id)}>
+                          <Trash2 size={12} /> Delete Forever
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
