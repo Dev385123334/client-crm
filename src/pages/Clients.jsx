@@ -16,7 +16,8 @@ export default function Clients() {
     getAllTrashRecords, getMonthlyRecords,
     currentMonth, currentYear, monthKey,
     exchangeRate, setExchangeRate, currencyView, setCurrencyView,
-    convertToINR, formatUSD, formatINR
+    convertToINR, formatUSD, formatINR,
+    taxRate, setTaxRate
   } = useContext(AppContext);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -81,17 +82,11 @@ export default function Clients() {
   const curMonthName = monthNames[parseInt(currentMonth)];
 
   const cashReceived = records.reduce((s, r) => s + ((r.paymentReceived || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
-  const [taxRate, setTaxRate] = useState(() => {
-    const saved = localStorage.getItem('profitpilot_taxRate');
-    return saved ? parseFloat(saved) : 0;
-  });
-  useEffect(() => {
-    localStorage.setItem('profitpilot_taxRate', JSON.stringify(taxRate));
-  }, [taxRate]);
   const cashReceivedAfterTax = cashReceived * (1 - taxRate / 100);
 
   const upcomingCollections = activeRecords.map(r => {
-    const dueDay = r.paymentDueDay || parseInt(r.onboardingDate.split('-')[2]) || 1;
+    const billingDate = r.billingStartDate || r.onboardingDate;
+    const dueDay = parseInt(billingDate.split('-')[2]) || r.paymentDueDay || 1;
     const viewMonth = parseInt(currentMonth);
     const viewYear = parseInt(currentYear);
     const lastDay = new Date(viewYear, viewMonth, 0).getDate();
@@ -189,25 +184,30 @@ export default function Clients() {
   const markAsPaid = (recordId, amount) => {
     updateRecordInMonth(recordId, { paymentReceived: amount, refundAmount: 0, chargebackAmount: 0 });
   };
+  const markAsUnpaid = (recordId) => {
+    updateRecordInMonth(recordId, { paymentReceived: 0 });
+  };
 
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailRecord, setDetailRecord] = useState(null);
 
   const [form, setForm] = useState({
     businessName: '', contactPerson: '', phone: '', email: '',
-    monthlyPrice: '', onboardingDate: '',
+    monthlyPrice: '', onboardingDate: '', billingStartDate: '',
     status: 'Active', statusDate: '', statusNote: 'None',
     contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
-    paymentReceived: '', refundAmount: '', chargebackAmount: ''
+    paymentReceived: '', refundAmount: '', chargebackAmount: '',
+    handledBy: 'Unassigned'
   });
 
   const openAddModal = () => {
     setForm({
       businessName: '', contactPerson: '', phone: '', email: '',
-      monthlyPrice: '', onboardingDate: '',
+      monthlyPrice: '', onboardingDate: '', billingStartDate: '',
       status: 'Active', statusDate: '', statusNote: 'None',
       contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
-      paymentReceived: '', refundAmount: '', chargebackAmount: ''
+      paymentReceived: '', refundAmount: '', chargebackAmount: '',
+      handledBy: 'Unassigned'
     });
     setEditRecordId(null);
     setShowAddModal(true);
@@ -221,16 +221,18 @@ export default function Clients() {
       email: record.email || '',
       monthlyPrice: record.monthlyPrice,
       onboardingDate: record.onboardingDate,
+      billingStartDate: record.billingStartDate || record.onboardingDate,
       status: record.status,
       statusDate: record.statusDate || '',
       statusNote: record.statusNote || 'None',
       contractEndDate: record.contractEndDate || '',
-      paymentDueDay: record.paymentDueDay,
+      paymentDueDay: new Date(record.billingStartDate || record.onboardingDate).getDate(),
       paymentMethod: record.paymentMethod || 'Stripe',
       notes: record.notes || '',
       paymentReceived: record.paymentReceived || '',
       refundAmount: record.refundAmount || '',
-      chargebackAmount: record.chargebackAmount || ''
+      chargebackAmount: record.chargebackAmount || '',
+      handledBy: record.handledBy || 'Unassigned'
     });
     setEditRecordId(record.id);
     setShowAddModal(true);
@@ -238,7 +240,8 @@ export default function Clients() {
 
   const saveClient = () => {
     if (!form.businessName || !form.monthlyPrice || !form.onboardingDate) return;
-    const dueDay = form.paymentDueDay || new Date(form.onboardingDate).getDate();
+    const billingDate = form.billingStartDate || form.onboardingDate;
+    const dueDay = new Date(billingDate).getDate();
     const recordData = {
       businessName: form.businessName,
       contactPerson: form.contactPerson,
@@ -246,6 +249,7 @@ export default function Clients() {
       email: form.email,
       monthlyPrice: parseFloat(form.monthlyPrice),
       onboardingDate: form.onboardingDate,
+      billingStartDate: form.billingStartDate || form.onboardingDate,
       contractEndDate: form.contractEndDate,
       paymentDueDay: parseInt(dueDay),
       paymentMethod: form.paymentMethod,
@@ -253,6 +257,7 @@ export default function Clients() {
       status: form.status,
       statusDate: form.statusDate,
       statusNote: form.statusNote,
+      handledBy: form.handledBy,
       paymentReceived: parseFloat(form.paymentReceived) || 0,
       refundAmount: parseFloat(form.refundAmount) || 0,
       chargebackAmount: parseFloat(form.chargebackAmount) || 0
@@ -625,6 +630,7 @@ export default function Clients() {
                 </th>
                 <th onClick={() => handleSort('businessName')}>Client Name <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('onboardingDate')}>Onboarded <ArrowUpDown size={10} /></th>
+                <th onClick={() => handleSort('billingStartDate')}>Billing <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('tenure')}>Tenure <ArrowUpDown size={10} /></th>
                 <th>Status</th>
                 <th onClick={() => handleSort('monthlyPrice')}>Monthly Price <ArrowUpDown size={10} /></th>
@@ -647,7 +653,8 @@ export default function Clients() {
                   ps.type = 'success';
                   ps.emoji = '\uD83D\uDFE2';
                 } else {
-                  const dueDay = record.paymentDueDay || parseInt(record.onboardingDate.split('-')[2]) || 1;
+                  const billingDate = record.billingStartDate || record.onboardingDate;
+                  const dueDay = parseInt(billingDate.split('-')[2]) || record.paymentDueDay || 1;
                   const viewMonth = parseInt(currentMonth);
                   const viewYear = parseInt(currentYear);
                   const lastDay = new Date(viewYear, viewMonth, 0).getDate();
@@ -676,9 +683,13 @@ export default function Clients() {
                       <div className="client-name-cell">
                         <span className="status-dot" data-status={record.status}></span>
                         <span className="font-medium">{record.businessName}</span>
+                        {record.handledBy && record.handledBy !== 'Unassigned' && (
+                          <span className="pm-label">{record.handledBy}</span>
+                        )}
                       </div>
                     </td>
                     <td>{formatDate(record.onboardingDate)}</td>
+                    <td>{formatDate(record.billingStartDate || record.onboardingDate)}</td>
                     <td>{tenure.text}</td>
                     <td>
                       <span className={`badge badge-${record.status === 'Active' ? 'success' : record.status === 'Paused' ? 'warning' : record.status === 'Cancelled' ? 'danger' : 'info'}`}>
@@ -702,16 +713,17 @@ export default function Clients() {
                                 (-{formatUSD(ps.refund + ps.chargeback)})
                               </span>
                             )}
+                            <button className="btn-icon" title="Mark as Unpaid" onClick={e => { e.stopPropagation(); markAsUnpaid(record.id); }}>
+                              <X size={14} />
+                            </button>
                           </div>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
                           <span className={`badge badge-${ps.type}`}>{ps.emoji} {ps.label}</span>
-                          {ps.label !== 'PAID' && (
-                            <button className="btn-icon" title="Mark as Paid" onClick={e => { e.stopPropagation(); markAsPaid(record.id, record.monthlyPrice); }}>
-                              <Check size={14} />
-                            </button>
-                          )}
+                          <button className="btn-icon" title="Mark as Paid" onClick={e => { e.stopPropagation(); markAsPaid(record.id, record.monthlyPrice); }}>
+                            <Check size={14} />
+                          </button>
                         </div>
                       )}
                     </td>
@@ -875,6 +887,15 @@ export default function Clients() {
                 <input className="input-field" type="date" value={form.onboardingDate} onChange={e => setForm({ ...form, onboardingDate: e.target.value })} />
               </div>
               <div className="input-group">
+                <label className="input-label">Billing Start Date</label>
+                <input className="input-field" type="date" value={form.billingStartDate || form.onboardingDate} onChange={e => { const val = e.target.value; setForm({ ...form, billingStartDate: val, paymentDueDay: val ? new Date(val).getDate() : form.paymentDueDay }); }} />
+                {form.billingStartDate && form.billingStartDate !== form.onboardingDate && (
+                  <span className="text-xs text-muted" style={{ marginTop: 4, display: 'block' }}>Billing: {formatDate(form.billingStartDate)} (day {new Date(form.billingStartDate).getDate()})</span>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="input-group">
                 <label className="input-label">Contract End Date</label>
                 <input className="input-field" type="date" value={form.contractEndDate} onChange={e => setForm({ ...form, contractEndDate: e.target.value })} />
               </div>
@@ -888,6 +909,14 @@ export default function Clients() {
                 <label className="input-label">Payment Method</label>
                 <select className="input-field" value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>
                   {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="input-group">
+                <label className="input-label">Handled By (PM)</label>
+                <select className="input-field" value={form.handledBy} onChange={e => setForm({ ...form, handledBy: e.target.value })}>
+                  <option value="Unassigned">Unassigned</option>
+                  <option value="Pankaj">Pankaj</option>
+                  <option value="Vaishnavi">Vaishnavi</option>
                 </select>
               </div>
             </div>
@@ -1053,6 +1082,10 @@ export default function Clients() {
               <div className="detail-row">
                 <span className="detail-label">Payment Method</span>
                 <span className="detail-value">{detailRecord.paymentMethod || '—'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Handled By</span>
+                <span className="detail-value">{detailRecord.handledBy || 'Unassigned'}</span>
               </div>
               {detailRecord.notes && (
                 <div className="detail-row">

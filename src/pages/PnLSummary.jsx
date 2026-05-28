@@ -8,7 +8,7 @@ export default function PnLSummary() {
   const {
     currentMonthRecords, currentMonthActive,
     expenses, currentMonth, currentYear,
-    exchangeRate, convertToINR, formatUSD, formatINR, profitGoal
+    exchangeRate, convertToINR, formatUSD, formatINR, profitGoal, taxRate
   } = useContext(AppContext);
 
   const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -25,6 +25,12 @@ export default function PnLSummary() {
   const netCashUSD = totalReceived - totalRefunds - totalChargebacks;
   const netCashINR = convertToINR(netCashUSD);
 
+  const taxMultiplier = taxRate > 0 ? (1 - taxRate / 100) : 1;
+  const netCashAfterTaxUSD = netCashUSD * taxMultiplier;
+  const netCashAfterTaxINR = convertToINR(netCashAfterTaxUSD);
+  const taxDeductedUSD = netCashUSD - netCashAfterTaxUSD;
+  const taxDeductedINR = convertToINR(taxDeductedUSD);
+
   const nextMonthMRR_USD = currentMonthActive.reduce((s, r) => s + r.monthlyPrice, 0);
   const nextMonthMRR_INR = convertToINR(nextMonthMRR_USD);
 
@@ -32,11 +38,14 @@ export default function PnLSummary() {
   const totalExpensesINR = monthExpenses.reduce((s, e) => s + e.amount, 0);
   const totalExpensesUSD = totalExpensesINR / exchangeRate;
 
-  const grossProfitUSD = netCashUSD - totalExpensesUSD;
-  const grossProfitINR = netCashINR - totalExpensesINR;
+  const grossProfitUSD = netCashAfterTaxUSD - totalExpensesUSD;
+  const grossProfitINR = netCashAfterTaxINR - totalExpensesINR;
   const isProfitable = grossProfitUSD >= 0;
 
-  const expectedProfitUSD = nextMonthMRR_USD - totalExpensesUSD;
+  const expectedIncomeAfterTaxUSD = nextMonthMRR_USD * taxMultiplier;
+  const expectedProfitUSD = expectedIncomeAfterTaxUSD - totalExpensesUSD;
+  const expectedIncomeAfterTaxINR = convertToINR(expectedIncomeAfterTaxUSD);
+  const expectedProfitINR = convertToINR(expectedProfitUSD);
 
   const goalProgress = Math.min((grossProfitINR / profitGoal) * 100, 100);
   const paidClientCount = currentMonthRecords.filter(r => r.paymentReceived > 0).length;
@@ -125,16 +134,21 @@ export default function PnLSummary() {
           <div>
             <h4 className="statement-section-title">INCOME</h4>
             <div className="statement-row">
-              <span>Net Cash In ({curMonthName}):</span>
-              <span className="font-semibold text-success">{formatUSD(netCashUSD)}</span>
+              <span>Gross Revenue (before tax):</span>
+              <span className="font-semibold">{formatUSD(netCashUSD)}</span>
             </div>
-            <div className="statement-row mt-4">
-              <span className="text-muted">Active Clients Revenue:</span>
-              <span className="text-muted">{formatUSD(totalReceived)}</span>
-            </div>
-            <div className="statement-row">
-              <span className="text-muted">Next Month MRR:</span>
-              <span className="text-muted">{formatUSD(nextMonthMRR_USD)}</span>
+            {taxRate > 0 && (
+              <div className="statement-row text-sm text-danger">
+                <span>Less: Tax ({taxRate}%):</span>
+                <span>-{formatUSD(taxDeductedUSD)}</span>
+              </div>
+            )}
+            <div className="statement-row total-line" style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 4 }}>
+              <span className="font-bold text-heading">Net Revenue (after tax):</span>
+              <div className="text-right">
+                <span className="font-bold text-success">{formatUSD(netCashAfterTaxUSD)}</span>
+                <div className="text-xs text-muted">&asymp; {formatINR(netCashAfterTaxINR)}</div>
+              </div>
             </div>
           </div>
 
@@ -153,22 +167,37 @@ export default function PnLSummary() {
             <h4 className="statement-section-title">PROFIT/LOSS</h4>
             <div className="statement-row text-lg">
               <span>Gross Profit ({curMonthName}):</span>
-              <span className={`font-bold ${isProfitable ? 'text-success' : 'text-danger'}`}>
-                {isProfitable ? '+' : ''}{formatUSD(grossProfitUSD)}
-              </span>
+              <div className="text-right">
+                <span className={`font-bold ${isProfitable ? 'text-success' : 'text-danger'}`}>
+                  {isProfitable ? '+' : ''}{formatUSD(grossProfitUSD)}
+                </span>
+                <div className="text-xs text-muted">&asymp; {formatINR(grossProfitINR)}</div>
+              </div>
             </div>
-            <div className="text-xs text-muted mt-1">Calculation: {formatUSD(netCashUSD)} - {formatUSD(totalExpensesUSD)}</div>
+            <div className="text-xs text-muted mt-1">Calculation: {formatUSD(netCashAfterTaxUSD)} ({formatINR(netCashAfterTaxINR)}) &minus; {formatUSD(totalExpensesUSD)} ({formatINR(totalExpensesINR)})</div>
 
             <div className="forecast-box mt-4">
               <h5 className="font-semibold mb-2 flex items-center gap-1"><AlertCircle size={14}/> Forecast for {nextMonthName}</h5>
               <div className="text-sm">
                 <div className="flex justify-between mb-1">
-                  <span>Expected Income:</span>
-                  <span>{formatUSD(nextMonthMRR_USD)}</span>
+                  <span>Expected Income (after tax):</span>
+                  <div className="text-right">
+                    <span>{formatUSD(expectedIncomeAfterTaxUSD)}</span>
+                    <div className="text-xs text-muted">&asymp; {formatINR(expectedIncomeAfterTaxINR)}</div>
+                  </div>
                 </div>
+                {taxRate > 0 && (
+                  <div className="flex justify-between text-xs text-muted mb-1">
+                    <span>Gross MRR ({nextMonthName}):</span>
+                    <span>{formatUSD(nextMonthMRR_USD)} &minus; {taxRate}% tax</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-semibold" style={{ color: expectedProfitUSD >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                   <span>Expected Profit:</span>
-                  <span>{expectedProfitUSD >= 0 ? '+' : ''}{formatUSD(expectedProfitUSD)}</span>
+                  <div className="text-right">
+                    <span>{expectedProfitUSD >= 0 ? '+' : ''}{formatUSD(expectedProfitUSD)}</span>
+                    <div className="text-xs text-muted">&asymp; {formatINR(expectedProfitINR)}</div>
+                  </div>
                 </div>
               </div>
             </div>

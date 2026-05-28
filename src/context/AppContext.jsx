@@ -24,6 +24,7 @@ function createMonthlyRecord(recordData, overrides = {}) {
     phone: recordData.phone || '',
     email: recordData.email || '',
     onboardingDate: recordData.onboardingDate || '',
+    billingStartDate: recordData.billingStartDate || recordData.onboardingDate || '',
     monthlyPrice: recordData.monthlyPrice || 0,
     paymentMethod: recordData.paymentMethod || 'Stripe',
     paymentDueDay: recordData.paymentDueDay || 1,
@@ -32,6 +33,7 @@ function createMonthlyRecord(recordData, overrides = {}) {
     status: recordData.status || 'Active',
     statusDate: recordData.statusDate || '',
     statusNote: recordData.statusNote || 'None',
+    handledBy: recordData.handledBy || 'Unassigned',
     paymentReceived: recordData.paymentReceived || 0,
     refundAmount: recordData.refundAmount || 0,
     chargebackAmount: recordData.chargebackAmount || 0,
@@ -102,6 +104,7 @@ export const AppProvider = ({ children }) => {
   const [expenses, setExpenses] = useState(() => loadFromLS('profitpilot_expenses', []));
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
+  const [taxRate, setTaxRate] = useState(() => loadFromLS('profitpilot_taxRate', 0));
 
   useEffect(() => {
     async function init() {
@@ -120,6 +123,7 @@ export const AppProvider = ({ children }) => {
           setExchangeRate(settings.exchangeRate);
           setProfitGoal(settings.profitGoal);
           setCurrencyView(settings.currencyView);
+          if (settings.taxRate !== undefined) setTaxRate(settings.taxRate);
         }
 
         const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
@@ -151,6 +155,7 @@ export const AppProvider = ({ children }) => {
       setExchangeRate(loadFromLS('profitpilot_exchangeRate', 83));
       setProfitGoal(loadFromLS('profitpilot_profitGoal', 200000));
       setCurrencyView(loadFromLS('profitpilot_currencyView', 'USD'));
+      setTaxRate(loadFromLS('profitpilot_taxRate', 0));
 
       const saved = loadFromLS('profitpilot_monthlyRecords', null);
       if (saved) {
@@ -169,14 +174,15 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
+    localStorage.setItem('profitpilot_taxRate', JSON.stringify(taxRate));
     if (isSupabaseConfigured()) {
-      saveSettings(exchangeRate, profitGoal, currencyView);
+      saveSettings(exchangeRate, profitGoal, currencyView, taxRate);
     } else {
       localStorage.setItem('profitpilot_exchangeRate', JSON.stringify(exchangeRate));
       localStorage.setItem('profitpilot_profitGoal', JSON.stringify(profitGoal));
       localStorage.setItem('profitpilot_currencyView', JSON.stringify(currencyView));
     }
-  }, [dataReady, exchangeRate, profitGoal, currencyView]);
+  }, [dataReady, exchangeRate, profitGoal, currencyView, taxRate]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -406,6 +412,7 @@ export const AppProvider = ({ children }) => {
       expenses, setExpenses, deleteExpenses,
       team, setTeam,
       syncLogs, setSyncLogs,
+      taxRate, setTaxRate,
       convertToINR, formatUSD, formatINR
     }}>
       {children}

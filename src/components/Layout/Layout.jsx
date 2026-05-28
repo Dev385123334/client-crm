@@ -1,7 +1,7 @@
 import React, { useContext } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
-import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart } from 'lucide-react';
+import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck } from 'lucide-react';
 import './Layout.css';
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
   { path: '/expenses', label: 'Expenses', icon: Receipt },
   { path: '/team', label: 'Team', icon: UsersRound },
   { path: '/pnl', label: 'P&L Summary', icon: BarChart3 },
+  { path: '/retention', label: 'PM Retention', icon: UserCheck },
   { path: '/forecast', label: 'Revenue Forecast', icon: TrendingUp },
   { path: '/scaling', label: 'Sales Scaling', icon: ScatterChart },
   { path: '/integrations', label: 'Integrations', icon: Link2 },
