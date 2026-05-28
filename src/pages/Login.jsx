@@ -1,7 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { signIn, signUp, createUserRole, getUserRole } from '../supabase/auth';
+import { signIn, signUp, createUserRole, getUserRole, getSession } from '../supabase/auth';
 import { Eye, EyeOff, LogIn, BarChart3, UserPlus } from 'lucide-react';
 import './Login.css';
 
@@ -100,10 +100,19 @@ export default function Login() {
 
     const userId = result.data.user.id;
 
+    // Ensure session is established before making RPC call
+    const session = await getSession();
+    if (!session) {
+      setError('Account created but could not establish session. Try signing in.');
+      setLoading(false);
+      return;
+    }
+
     const roleResult = await createUserRole(userId, email, selectedRole);
 
     if (roleResult.error) {
-      setError('Account created but role could not be assigned. Contact an admin.');
+      console.error('Role assignment error:', roleResult.error);
+      setError(`Account created but role could not be assigned: ${roleResult.error.message || 'Unknown error'}. Contact an admin.`);
       setLoading(false);
       return;
     }

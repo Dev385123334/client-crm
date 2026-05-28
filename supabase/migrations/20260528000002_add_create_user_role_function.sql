@@ -11,10 +11,11 @@ CREATE OR REPLACE FUNCTION public.create_user_role(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = 'public'
 AS $$
 DECLARE
   v_user_count bigint;
+  v_current_uid uuid;
   v_is_admin boolean;
 BEGIN
   SELECT COUNT(*) INTO v_user_count FROM public.user_roles;
@@ -25,9 +26,15 @@ BEGIN
     RETURN;
   END IF;
 
+  v_current_uid := auth.uid();
+
   IF p_role = 'admin' THEN
+    IF v_current_uid IS NULL THEN
+      RAISE EXCEPTION 'You must be signed in to create an admin account.';
+    END IF;
+
     SELECT EXISTS (
-      SELECT 1 FROM public.user_roles WHERE id = auth.uid() AND role = 'admin'
+      SELECT 1 FROM public.user_roles WHERE id = v_current_uid AND role = 'admin'
     ) INTO v_is_admin;
 
     IF NOT v_is_admin THEN
@@ -39,3 +46,6 @@ BEGIN
   VALUES (p_user_id, p_email, p_role);
 END;
 $$;
+
+-- Grant execute permission so the function can be called via the Supabase API
+GRANT EXECUTE ON FUNCTION public.create_user_role TO anon, authenticated;
