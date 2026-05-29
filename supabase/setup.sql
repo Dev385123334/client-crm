@@ -97,7 +97,7 @@ where not exists (select 1 from settings);
 create table if not exists user_roles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
-  role text not null check (role in ('admin', 'pm_editor', 'hr_editor')),
+  role text not null check (role = 'admin' or role = 'hr_editor' or role ~ '^pm\d*_editor$'),
   created_at timestamptz default now()
 );
 
@@ -233,7 +233,7 @@ begin
   v_role := new.raw_app_meta_data ->> 'role';
 
   -- Default to pm_editor if invalid or missing
-  if v_role is null or v_role not in ('admin', 'pm_editor', 'hr_editor') then
+  if v_role is null or (v_role not in ('admin', 'hr_editor') and v_role !~ '^pm\d*_editor$') then
     v_role := 'pm_editor';
   end if;
 
@@ -286,3 +286,37 @@ from auth.users u
 where not exists (
   select 1 from public.user_roles r where r.id = u.id
 );
+
+-- ============================================================
+-- CLIENT-TO-PM ASSIGNMENTS (admin-only feature)
+-- ============================================================
+
+create table if not exists client_pm_assignments (
+  id uuid default gen_random_uuid() primary key,
+  business_name text not null,
+  assigned_pm text not null,
+  created_at timestamptz default now(),
+  unique(business_name, assigned_pm)
+);
+
+alter table client_pm_assignments enable row level security;
+
+drop policy if exists "admins_all" on client_pm_assignments;
+create policy "admins_all"
+  on client_pm_assignments
+  for all
+  to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "pm_read_assigned" on client_pm_assignments;
+create policy "pm_read_assigned"
+  on client_pm_assignments
+  for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.user_roles
+      where id = auth.uid() and role = assigned_pm
+    )
+  );

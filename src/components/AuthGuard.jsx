@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { getBaseRole } from '../utils/helpers';
 
 const roleAllowedRoutes = {
   admin: null,
@@ -34,11 +35,12 @@ export default function AuthGuard({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  const allowedRoutes = roleAllowedRoutes[userRole];
+  const baseRole = getBaseRole(userRole);
+  const allowedRoutes = roleAllowedRoutes[baseRole];
   if (allowedRoutes !== null) {
     const allowed = allowedRoutes.some(route => location.pathname === route || location.pathname.startsWith(route + '/'));
     if (!allowed) {
-      const defaultRoute = roleDefaultRoutes[userRole] || '/clients';
+      const defaultRoute = roleDefaultRoutes[baseRole] || '/clients';
       return <Navigate to={defaultRoute} replace />;
     }
   }

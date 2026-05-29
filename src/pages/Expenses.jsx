@@ -1,7 +1,7 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
-import { EXPENSE_CATEGORIES, categorizeExpense, parseINRAmount } from '../utils/helpers';
+import { EXPENSE_CATEGORIES, categorizeExpense, parseINRAmount, getBaseRole } from '../utils/helpers';
 import { Plus, Upload, Trash2, Edit3, Filter, Undo2, Archive, RotateCcw, AlertCircle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
@@ -9,7 +9,7 @@ import './Expenses.css';
 
 export default function Expenses() {
   const { userRole } = useContext(AuthContext);
-  const canDelete = userRole === 'admin';
+  const canDelete = getBaseRole(userRole) === 'admin';
 
   const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR } = useContext(AppContext);
 

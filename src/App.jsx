@@ -11,6 +11,7 @@ import PMRetention from './pages/PMRetention';
 import Forecast from './pages/Forecast';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
+import ClientPM from './pages/ClientPM';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
               <Route path="/forecast" element={<AuthGuard><Forecast /></AuthGuard>} />
               <Route path="/integrations" element={<AuthGuard><Integrations /></AuthGuard>} />
               <Route path="/settings" element={<AuthGuard><Settings /></AuthGuard>} />
+              <Route path="/client-pm" element={<AuthGuard><ClientPM /></AuthGuard>} />
             </Routes>
           </Layout>
         } />

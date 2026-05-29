@@ -1,7 +1,7 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
-import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES } from '../utils/helpers';
+import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole } from '../utils/helpers';
 import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
 import FilterBar from '../components/FilterBar/FilterBar';
 import { v4 as uuidv4 } from 'uuid';
@@ -10,7 +10,7 @@ import './Clients.css';
 
 export default function Clients() {
   const { userRole } = useContext(AuthContext);
-  const canDelete = userRole === 'admin';
+  const canDelete = getBaseRole(userRole) === 'admin';
 
   const {
     currentMonthRecords, currentMonthActive, currentMonthCancelled, currentMonthTrash,
@@ -21,7 +21,8 @@ export default function Clients() {
     currentMonth, currentYear, monthKey,
     exchangeRate, setExchangeRate, currencyView, setCurrencyView,
     convertToINR, formatUSD, formatINR,
-    taxRate, setTaxRate
+    taxRate, setTaxRate,
+    assignments
   } = useContext(AppContext);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -69,7 +70,11 @@ export default function Clients() {
     setUndoRemaining(0);
   };
 
-  const records = currentMonthRecords;
+  const baseRole = getBaseRole(userRole);
+  const userAssignments = assignments.filter(a => a.assignedPm === userRole);
+  const records = baseRole === 'pm_editor' && userAssignments.length > 0
+    ? currentMonthRecords.filter(r => userAssignments.some(a => a.businessName === r.businessName))
+    : currentMonthRecords;
   const activeRecords = currentMonthActive;
   const cancelledRecords = currentMonthCancelled;
 

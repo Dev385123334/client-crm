@@ -2,7 +2,8 @@ import React, { useContext } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { AuthContext } from '../../context/AuthContext';
-import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck, LogOut } from 'lucide-react';
+import { getBaseRole } from '../../utils/helpers';
+import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck, LogOut, UserPlus } from 'lucide-react';
 import './Layout.css';
 
 const allNavItems = [
@@ -14,6 +15,7 @@ const allNavItems = [
   { path: '/forecast', label: 'Revenue Forecast', icon: TrendingUp, roles: ['admin'] },
   { path: '/scaling', label: 'Sales Scaling', icon: ScatterChart, roles: ['admin'] },
   { path: '/integrations', label: 'Integrations', icon: Link2, roles: ['admin'] },
+  { path: '/client-pm', label: 'Client-PM', icon: UserPlus, roles: ['admin'] },
 ];
 
 const MONTH_LABELS = [
@@ -26,7 +28,8 @@ export default function Layout({ children }) {
   const { userRole, logout } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const navItems = allNavItems.filter(item => item.roles.includes(userRole));
+  const baseRole = getBaseRole(userRole);
+  const navItems = allNavItems.filter(item => item.roles.includes(baseRole));
 
   const goMonth = (dir) => {
     let m = parseInt(currentMonth) + dir;

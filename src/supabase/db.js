@@ -202,6 +202,36 @@ export async function deleteExpensesFromDB(ids) {
   if (error) console.error('Failed to delete expenses from DB:', error);
 }
 
+export async function loadClientPmAssignments() {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase.from('client_pm_assignments').select('*');
+  if (error || !data) return [];
+  return data.map(row => ({
+    id: row.id,
+    businessName: row.business_name,
+    assignedPm: row.assigned_pm,
+  }));
+}
+
+export async function saveClientPmAssignments(assignments) {
+  if (!isSupabaseConfigured()) return;
+  const rows = assignments.map(a => ({
+    id: a.id,
+    business_name: a.businessName,
+    assigned_pm: a.assignedPm,
+  }));
+  const { error } = await supabase.from('client_pm_assignments').upsert(rows, {
+    onConflict: 'id',
+    ignoreDuplicates: false,
+  });
+  if (error) throw new Error(`Failed to save assignments: ${error.message}`);
+}
+
+export async function deleteClientPmAssignment(id) {
+  if (!isSupabaseConfigured()) return;
+  await supabase.from('client_pm_assignments').delete().eq('id', id);
+}
+
 export async function migrateFromLocalStorage() {
   if (!isSupabaseConfigured()) return false;
   const loadLS = (key, def) => {

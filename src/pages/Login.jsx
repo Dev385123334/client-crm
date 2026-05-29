@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { signIn, signUp, getUserRole, createUserRole } from '../supabase/auth';
 import { Eye, EyeOff, LogIn, BarChart3, UserPlus } from 'lucide-react';
+import { getBaseRole } from '../utils/helpers';
 import './Login.css';
 
 const roleRoutes = {
@@ -88,7 +89,7 @@ export default function Login() {
     localStorage.setItem('crm_user_role', role);
     await fetchRole(userId);
 
-    const target = roleRoutes[role] || '/clients';
+    const target = roleRoutes[getBaseRole(role)] || '/clients';
     navigate(target, { replace: true });
   };
 

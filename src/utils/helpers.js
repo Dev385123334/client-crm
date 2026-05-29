@@ -150,3 +150,10 @@ export const EXPENSE_CATEGORIES = [
 export const CLIENT_STATUSES = ['Active', 'Paused', 'Cancelled'];
 export const STATUS_NOTES = ['None', 'Requested cancellation', 'No activity', 'Other'];
 export const PAYMENT_METHODS = ['Stripe', 'PayPal', 'Bank Transfer', 'Manual Invoice'];
+
+// Normalize a role name (e.g. "pm2_editor") to its base permission set
+export function getBaseRole(role) {
+  if (role === 'admin') return 'admin';
+  if (role === 'hr_editor') return 'hr_editor';
+  return 'pm_editor';
+}

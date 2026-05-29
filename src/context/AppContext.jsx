@@ -8,7 +8,8 @@ import {
   loadTeam, saveTeam,
   loadSyncLogs, saveSyncLogs,
   migrateFromLocalStorage,
-  deleteExpensesFromDB
+  deleteExpensesFromDB,
+  loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -105,18 +106,20 @@ export const AppProvider = ({ children }) => {
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
   const [taxRate, setTaxRate] = useState(() => loadFromLS('profitpilot_taxRate', 0));
+  const [assignments, setAssignments] = useState([]);
 
   useEffect(() => {
     async function init() {
       loadFromLocalStorage();
 
       if (isSupabaseConfigured()) {
-        const [settings, records, exp, tm, logs] = await Promise.all([
+        const [settings, records, exp, tm, logs, asgn] = await Promise.all([
           loadSettings(),
           loadMonthlyRecords(),
           loadExpenses(),
           loadTeam(),
-          loadSyncLogs()
+          loadSyncLogs(),
+          loadClientPmAssignments()
         ]);
 
         if (settings) {
@@ -146,6 +149,7 @@ export const AppProvider = ({ children }) => {
         if (exp && exp.length > 0 && !localHasExpenses) setExpenses(exp);
         if (tm && tm.length > 0) setTeam(tm);
         if (logs) setSyncLogs(logs);
+        if (asgn) setAssignments(asgn);
       }
 
       setDataReady(true);
@@ -376,6 +380,20 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+  const saveAssignments = useCallback(async (newAssignments) => {
+    setAssignments(newAssignments);
+    if (isSupabaseConfigured()) {
+      await saveClientPmAssignments(newAssignments);
+    }
+  }, []);
+
+  const deleteAssignment = useCallback(async (id) => {
+    setAssignments(prev => prev.filter(a => a.id !== id));
+    if (isSupabaseConfigured()) {
+      await deleteClientPmAssignment(id);
+    }
+  }, []);
+
   const currentMonthRecords = (monthlyRecords[monthKey] || []).filter(r => !r.isDeleted);
   const currentMonthActive = currentMonthRecords.filter(r => r.status === 'Active');
   const currentMonthCancelled = currentMonthRecords.filter(r => r.status === 'Cancelled');
@@ -413,7 +431,8 @@ export const AppProvider = ({ children }) => {
       team, setTeam,
       syncLogs, setSyncLogs,
       taxRate, setTaxRate,
-      convertToINR, formatUSD, formatINR
+      convertToINR, formatUSD, formatINR,
+      assignments, saveAssignments, deleteAssignment
     }}>
       {children}
     </AppContext.Provider>

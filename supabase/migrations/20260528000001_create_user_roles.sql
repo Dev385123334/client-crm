@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS user_roles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email text NOT NULL,
-  role text NOT NULL CHECK (role IN ('admin', 'pm_editor', 'hr_editor')),
+  role text NOT NULL CHECK (role = 'admin' OR role = 'hr_editor' OR role ~ '^pm\d*_editor$'),
   created_at timestamptz DEFAULT now()
 );
 
