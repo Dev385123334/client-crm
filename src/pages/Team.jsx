@@ -1,4 +1,5 @@
 import React, { useContext, useState } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import { AppContext } from '../context/AppContext';
 import { Plus, Trash2, Edit3, Users } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -6,7 +7,8 @@ import { parseINRAmount } from '../utils/helpers';
 import './Team.css';
 
 export default function Team() {
-  const { team, setTeam, formatINR } = useContext(AppContext);
+  const { user } = useContext(AuthContext);
+  const { team, setTeam, formatINR, logAction } = useContext(AppContext);
   const [showModal, setShowModal] = useState(false);
   const [editMember, setEditMember] = useState(null);
   const [form, setForm] = useState({ name: '', team: 'Day', role: '', monthlySalary: '' });
@@ -21,11 +23,23 @@ export default function Team() {
   const openEdit = (m) => { setForm({ name: m.name, team: m.team, role: m.role, monthlySalary: m.monthlySalary }); setEditMember(m); setShowModal(true); };
   const save = () => {
     if (!form.name || form.monthlySalary === '' || form.monthlySalary === null || form.monthlySalary === undefined) return;
-    if (editMember) setTeam(prev => prev.map(m => m.id === editMember.id ? { ...m, ...form, monthlySalary: parseINRAmount(form.monthlySalary) } : m));
-    else setTeam(prev => [...prev, { id: uuidv4(), ...form, monthlySalary: parseINRAmount(form.monthlySalary) }]);
+    if (editMember) {
+      setTeam(prev => prev.map(m => m.id === editMember.id ? { ...m, ...form, monthlySalary: parseINRAmount(form.monthlySalary) } : m));
+      logAction({ user, actionType: 'team.update', entityType: 'team_member', entityId: editMember.id, entityName: form.name });
+    } else {
+      const newId = uuidv4();
+      setTeam(prev => [...prev, { id: newId, ...form, monthlySalary: parseINRAmount(form.monthlySalary) }]);
+      logAction({ user, actionType: 'team.create', entityType: 'team_member', entityId: newId, entityName: form.name });
+    }
     setShowModal(false);
   };
-  const remove = (id) => { if (confirm('Remove?')) setTeam(prev => prev.filter(m => m.id !== id)); };
+  const remove = (id) => {
+    if (confirm('Remove?')) {
+      const member = team.find(m => m.id === id);
+      setTeam(prev => prev.filter(m => m.id !== id));
+      logAction({ user, actionType: 'team.delete', entityType: 'team_member', entityId: id, entityName: member?.name, details: { record: member } });
+    }
+  };
 
   return (
     <div className="team-page">

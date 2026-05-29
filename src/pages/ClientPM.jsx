@@ -1,10 +1,12 @@
 import React, { useContext, useState, useMemo } from 'react';
+import { AuthContext } from '../context/AuthContext';
 import { AppContext } from '../context/AppContext';
-import { Save, X, UserPlus } from 'lucide-react';
+import { X, UserPlus } from 'lucide-react';
 import './Settings.css';
 
 export default function ClientPM() {
-  const { monthlyRecords, assignments, saveAssignments, deleteAssignment } = useContext(AppContext);
+  const { user } = useContext(AuthContext);
+  const { monthlyRecords, assignments, saveAssignments, deleteAssignment, logAction } = useContext(AppContext);
   const [saved, setSaved] = useState(false);
   const [selectedPM, setSelectedPM] = useState({});
 
@@ -34,11 +36,14 @@ export default function ClientPM() {
     if (exists) return;
     const newAssign = { id: crypto.randomUUID(), businessName, assignedPm: pm.trim() };
     await saveAssignments([...assignments, newAssign]);
+    logAction({ user, actionType: 'assignment.create', entityType: 'assignment', entityId: newAssign.id, entityName: businessName, details: { assignedPm: pm.trim() } });
     setSelectedPM(prev => ({ ...prev, [businessName]: '' }));
   };
 
   const handleDelete = async (id) => {
+    const assign = assignments.find(a => a.id === id);
     await deleteAssignment(id);
+    logAction({ user, actionType: 'assignment.delete', entityType: 'assignment', entityId: id, entityName: assign?.businessName, details: { assignedPm: assign?.assignedPm } });
   };
 
   const handleSave = async () => {

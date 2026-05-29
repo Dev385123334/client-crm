@@ -141,6 +141,7 @@ export async function saveExpenses(expenses) {
     status: e.status,
     month: e.month,
     year: e.year,
+    notes: e.notes || '',
     updated_at: new Date().toISOString()
   }));
   await supabase.from('expenses').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
@@ -230,6 +231,33 @@ export async function saveClientPmAssignments(assignments) {
 export async function deleteClientPmAssignment(id) {
   if (!isSupabaseConfigured()) return;
   await supabase.from('client_pm_assignments').delete().eq('id', id);
+}
+
+export async function insertAuditLog({ userId, userEmail, actionType, entityType, entityId, entityName, details }) {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.from('audit_logs').insert({
+    user_id: userId,
+    user_email: userEmail,
+    action_type: actionType,
+    entity_type: entityType,
+    entity_id: entityId || '',
+    entity_name: entityName || '',
+    details: details || {}
+  }).select().single();
+  if (error) { console.error('insertAuditLog error:', error); return null; }
+  return data;
+}
+
+export async function loadAuditLogs() {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false });
+  if (error) { console.error('loadAuditLogs error:', error); return []; }
+  return data || [];
+}
+
+export async function deleteAuditLog(id) {
+  if (!isSupabaseConfigured()) return;
+  await supabase.from('audit_logs').delete().eq('id', id);
 }
 
 export async function migrateFromLocalStorage() {

@@ -3,19 +3,22 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { AuthContext } from '../../context/AuthContext';
 import { getBaseRole } from '../../utils/helpers';
-import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck, LogOut, UserPlus } from 'lucide-react';
+import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck, LogOut, UserPlus, ClipboardList } from 'lucide-react';
+import SecurityLayer from '../SecurityLayer/SecurityLayer';
+import '../SecurityLayer/SecurityLayer.css';
 import './Layout.css';
 
 const allNavItems = [
   { path: '/clients', label: 'Clients', icon: Users, roles: ['admin', 'pm_editor'] },
   { path: '/expenses', label: 'Expenses', icon: Receipt, roles: ['admin', 'hr_editor'] },
-  { path: '/team', label: 'Team', icon: UsersRound, roles: ['admin'] },
+  { path: '/team', label: 'Team', icon: UsersRound, roles: ['admin', 'hr_editor'] },
   { path: '/pnl', label: 'P&L Summary', icon: BarChart3, roles: ['admin'] },
   { path: '/retention', label: 'PM Retention', icon: UserCheck, roles: ['admin'] },
   { path: '/forecast', label: 'Revenue Forecast', icon: TrendingUp, roles: ['admin'] },
-  { path: '/scaling', label: 'Sales Scaling', icon: ScatterChart, roles: ['admin'] },
+  { path: '/scaling', label: 'Sales Scaling', icon: ScatterChart, roles: ['admin', 'hr_editor'] },
   { path: '/integrations', label: 'Integrations', icon: Link2, roles: ['admin'] },
   { path: '/client-pm', label: 'Client-PM', icon: UserPlus, roles: ['admin'] },
+  { path: '/audit-log', label: 'Audit Log', icon: ClipboardList, roles: ['admin'] },
 ];
 
 const MONTH_LABELS = [
@@ -105,7 +108,9 @@ export default function Layout({ children }) {
 
         {/* Page content */}
         <main className="page-content">
-          {children}
+          <SecurityLayer>
+            {children}
+          </SecurityLayer>
         </main>
       </div>
     </div>

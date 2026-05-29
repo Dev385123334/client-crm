@@ -1,0 +1,50 @@
+.security-protected,
+.security-protected * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+.security-protected input,
+.security-protected textarea,
+.security-protected [contenteditable] {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+.security-protected::selection,
+.security-protected *::selection {
+  background: transparent !important;
+}
+
+.security-protected::-moz-selection,
+.security-protected *::-moz-selection {
+  background: transparent !important;
+}
+
+.security-protected {
+  position: relative;
+}
+
+.security-blurred {
+  filter: blur(8px) brightness(0.6);
+  pointer-events: none;
+  transition: filter 0.15s ease;
+}
+
+.security-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  pointer-events: none;
+}

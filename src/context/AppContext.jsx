@@ -9,7 +9,8 @@ import {
   loadSyncLogs, saveSyncLogs,
   migrateFromLocalStorage,
   deleteExpensesFromDB,
-  loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment
+  loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
+  insertAuditLog, loadAuditLogs
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -107,6 +108,7 @@ export const AppProvider = ({ children }) => {
   const [syncLogs, setSyncLogs] = useState([]);
   const [taxRate, setTaxRate] = useState(() => loadFromLS('profitpilot_taxRate', 0));
   const [assignments, setAssignments] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   useEffect(() => {
     async function init() {
@@ -145,11 +147,18 @@ export const AppProvider = ({ children }) => {
         }
 
         const localExpenses = loadFromLS('profitpilot_expenses', null);
-        const localHasExpenses = localExpenses && localExpenses.length > 0;
-        if (exp && exp.length > 0 && !localHasExpenses) setExpenses(exp);
+        if (exp && exp.length > 0) {
+          setExpenses(exp);
+          localStorage.setItem('profitpilot_expenses', JSON.stringify(exp));
+        } else if (localExpenses && localExpenses.length > 0) {
+          setExpenses(localExpenses);
+        }
         if (tm && tm.length > 0) setTeam(tm);
         if (logs) setSyncLogs(logs);
         if (asgn) setAssignments(asgn);
+
+        const auditData = await loadAuditLogs();
+        if (auditData) setAuditLogs(auditData);
       }
 
       setDataReady(true);
@@ -205,9 +214,8 @@ export const AppProvider = ({ children }) => {
     if (!dataReady) return;
     if (isSupabaseConfigured()) {
       saveExpenses(expenses);
-    } else {
-      localStorage.setItem('profitpilot_expenses', JSON.stringify(expenses));
     }
+    localStorage.setItem('profitpilot_expenses', JSON.stringify(expenses));
   }, [dataReady, expenses]);
 
   useEffect(() => {
@@ -394,6 +402,35 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+  const logAction = useCallback(async ({ user, actionType, entityType, entityId, entityName, details }) => {
+    if (!user) return;
+    const now = new Date().toISOString();
+    const tempId = crypto.randomUUID();
+    const entry = {
+      id: tempId, user_id: user.id, user_email: user.email || '',
+      action_type: actionType, entity_type: entityType,
+      entity_id: entityId || '', entity_name: entityName || '',
+      details: details || {}, created_at: now
+    };
+    setAuditLogs(prev => [entry, ...prev]);
+    if (isSupabaseConfigured()) {
+      const saved = await insertAuditLog({
+        userId: user.id, userEmail: user.email || '',
+        actionType, entityType, entityId, entityName, details
+      });
+      if (saved) {
+        setAuditLogs(prev => prev.map(e => e.id === tempId ? saved : e));
+      }
+    }
+  }, []);
+
+  const refreshAuditLogs = useCallback(async () => {
+    if (isSupabaseConfigured()) {
+      const logs = await loadAuditLogs();
+      if (logs) setAuditLogs(logs);
+    }
+  }, []);
+
   const currentMonthRecords = (monthlyRecords[monthKey] || []).filter(r => !r.isDeleted);
   const currentMonthActive = currentMonthRecords.filter(r => r.status === 'Active');
   const currentMonthCancelled = currentMonthRecords.filter(r => r.status === 'Cancelled');
@@ -432,7 +469,8 @@ export const AppProvider = ({ children }) => {
       syncLogs, setSyncLogs,
       taxRate, setTaxRate,
       convertToINR, formatUSD, formatINR,
-      assignments, saveAssignments, deleteAssignment
+      assignments, saveAssignments, deleteAssignment,
+      auditLogs, logAction, refreshAuditLogs
     }}>
       {children}
     </AppContext.Provider>

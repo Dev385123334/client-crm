@@ -8,10 +8,10 @@ import Papa from 'papaparse';
 import './Expenses.css';
 
 export default function Expenses() {
-  const { userRole } = useContext(AuthContext);
-  const canDelete = getBaseRole(userRole) === 'admin';
+  const { user, userRole } = useContext(AuthContext);
+  const canDelete = getBaseRole(userRole) !== 'pm_editor';
 
-  const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR } = useContext(AppContext);
+  const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR, logAction } = useContext(AppContext);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editExpense, setEditExpense] = useState(null);
@@ -42,8 +42,11 @@ export default function Expenses() {
     if (!form.name || form.amount === '' || form.amount === null || form.amount === undefined) return;
     if (editExpense) {
       setExpenses(prev => prev.map(e => e.id === editExpense.id ? { ...e, name: form.name, amount: parseINRAmount(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes } : e));
+      logAction({ user, actionType: 'expense.update', entityType: 'expense', entityId: editExpense.id, entityName: form.name });
     } else {
-      setExpenses(prev => [...prev, { id: uuidv4(), name: form.name, amount: parseINRAmount(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes, month: currentMonth, year: currentYear }]);
+      const newId = uuidv4();
+      setExpenses(prev => [...prev, { id: newId, name: form.name, amount: parseINRAmount(form.amount), category: form.category, frequency: form.frequency, date: form.date, status: form.status, notes: form.notes, month: currentMonth, year: currentYear }]);
+      logAction({ user, actionType: 'expense.create', entityType: 'expense', entityId: newId, entityName: form.name, details: { amount: form.amount } });
     }
     setShowAddModal(false);
   };
@@ -71,10 +74,11 @@ export default function Expenses() {
     });
     setExpenses(prev => [...prev, ...newExpenses]);
     setImportHistory(prev => [{ date: new Date().toLocaleString(), count: imported, skipped, ids: newExpenses.map(e => e.id) }, ...prev]);
+    logAction({ user, actionType: 'expense.bulk_import', entityType: 'expense', entityName: `${imported} expenses`, details: { imported, skipped, count: newExpenses.length } });
     alert(`${imported} expenses imported. ${skipped} duplicates skipped.`);
     setShowImportModal(false); setImportPreview(null);
   };
-  const undoLastImport = () => { if (!importHistory.length) return; const last = importHistory[0]; setExpenses(prev => prev.filter(e => !last.ids.includes(e.id))); setImportHistory(prev => prev.slice(1)); };
+  const undoLastImport = () => { if (!importHistory.length) return; const last = importHistory[0]; setExpenses(prev => prev.filter(e => !last.ids.includes(e.id))); setImportHistory(prev => prev.slice(1)); logAction({ user, actionType: 'expense.undo_import', entityType: 'expense', entityName: `${last.count} expenses`, details: { ids: last.ids } }); };
 
   const [dragOver, setDragOver] = useState(false);
   const handleDrop = (e) => {
@@ -116,6 +120,7 @@ export default function Expenses() {
     if (!undoData) return;
     setExpenses(prev => [...prev, ...undoData.expenses]);
     setDeletedExpenses(prev => prev.filter(e => !undoData.ids.has(e.id)));
+    logAction({ user, actionType: 'expense.restore', entityType: 'expense', entityName: `${undoData.expenses.length} expense(s)` });
     setUndoData(null);
     setUndoRemaining(0);
   };
@@ -145,6 +150,7 @@ export default function Expenses() {
     const deleted = toDelete.map(e => ({ ...e, deletedAt: now }));
     setDeletedExpenses(prev => [...prev, ...deleted]);
     setExpenses(prev => prev.filter(e => !selectedIds.has(e.id)));
+    logAction({ user, actionType: 'expense.bulk_delete', entityType: 'expense', entityName: `${toDelete.length} expenses`, details: { ids: toDelete.map(e => e.id), names: toDelete.map(e => e.name) } });
     setUndoData({ expenses: deleted, ids: new Set(deleted.map(e => e.id)) });
     setUndoRemaining(10);
     setSelectedIds(new Set());
@@ -156,6 +162,7 @@ export default function Expenses() {
     const deleted = { ...exp, deletedAt: now };
     setDeletedExpenses(prev => [...prev, deleted]);
     setExpenses(prev => prev.filter(e => e.id !== exp.id));
+    logAction({ user, actionType: 'expense.delete', entityType: 'expense', entityId: exp.id, entityName: exp.name, details: { record: { ...exp } } });
     setUndoData({ expenses: [deleted], ids: new Set([deleted.id]) });
     setUndoRemaining(10);
   };
@@ -163,12 +170,15 @@ export default function Expenses() {
   const restoreExpense = (exp) => {
     setExpenses(prev => [...prev, { ...exp, deletedAt: undefined }]);
     setDeletedExpenses(prev => prev.filter(e => e.id !== exp.id));
+    logAction({ user, actionType: 'expense.restore', entityType: 'expense', entityId: exp.id, entityName: exp.name });
   };
 
   const permanentlyDeleteExpense = (id) => {
     if (!confirm('Permanently delete this expense? This cannot be undone.')) return;
+    const exp = deletedExpenses.find(e => e.id === id);
     deleteExpenses([id]);
     setDeletedExpenses(prev => prev.filter(e => e.id !== id));
+    logAction({ user, actionType: 'expense.permanent_delete', entityType: 'expense', entityId: id, entityName: exp?.name });
   };
 
   const emptyBin = () => {
@@ -177,6 +187,7 @@ export default function Expenses() {
     const ids = deletedExpenses.map(e => e.id);
     deleteExpenses(ids);
     setDeletedExpenses([]);
+    logAction({ user, actionType: 'expense.permanent_delete', entityType: 'expense', entityName: `${deletedExpenses.length} expense(s)` });
   };
 
   const trashCount = deletedExpenses.length;

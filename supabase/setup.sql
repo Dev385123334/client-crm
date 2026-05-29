@@ -320,3 +320,35 @@ create policy "pm_read_assigned"
       where id = auth.uid() and role = assigned_pm
     )
   );
+
+-- ============================================================
+-- 8. Audit logs table
+-- ============================================================
+create table if not exists audit_logs (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid not null,
+  user_email text not null default '',
+  action_type text not null,
+  entity_type text not null default '',
+  entity_id text not null default '',
+  entity_name text not null default '',
+  details jsonb default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table audit_logs enable row level security;
+
+drop policy if exists "admin_all_audit" on audit_logs;
+create policy "admin_all_audit"
+  on audit_logs
+  for all
+  to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "authenticated_insert_audit" on audit_logs;
+create policy "authenticated_insert_audit"
+  on audit_logs
+  for insert
+  to authenticated
+  with check (auth.uid() = user_id);

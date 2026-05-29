@@ -4,12 +4,13 @@ import { AuthContext } from '../context/AuthContext';
 import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole } from '../utils/helpers';
 import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
 import FilterBar from '../components/FilterBar/FilterBar';
+import NotificationPanel from '../components/NotificationPanel/NotificationPanel';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
 import './Clients.css';
 
 export default function Clients() {
-  const { userRole } = useContext(AuthContext);
+  const { user, userRole } = useContext(AuthContext);
   const canDelete = getBaseRole(userRole) === 'admin';
 
   const {
@@ -22,7 +23,8 @@ export default function Clients() {
     exchangeRate, setExchangeRate, currencyView, setCurrencyView,
     convertToINR, formatUSD, formatINR,
     taxRate, setTaxRate,
-    assignments
+    assignments,
+    logAction
   } = useContext(AppContext);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -65,6 +67,7 @@ export default function Clients() {
     undoData.records.forEach(rec => {
       restoreRecord(rec.recordId, rec.previousStatus || 'Active', rec.month, rec.year);
     });
+    logAction({ user, actionType: 'client.restore', entityType: 'client', entityName: `${undoData.records.length} client(s)`, details: { records: undoData.records } });
     clearInterval(undoIntervalRef.current);
     setUndoData(null);
     setUndoRemaining(0);
@@ -192,9 +195,13 @@ export default function Clients() {
 
   const markAsPaid = (recordId, amount) => {
     updateRecordInMonth(recordId, { paymentReceived: amount, refundAmount: 0, chargebackAmount: 0 });
+    const rec = currentMonthRecords.find(r => r.id === recordId);
+    logAction({ user, actionType: 'client.mark_paid', entityType: 'client', entityId: recordId, entityName: rec?.businessName, details: { amount } });
   };
   const markAsUnpaid = (recordId) => {
     updateRecordInMonth(recordId, { paymentReceived: 0 });
+    const rec = currentMonthRecords.find(r => r.id === recordId);
+    logAction({ user, actionType: 'client.mark_unpaid', entityType: 'client', entityId: recordId, entityName: rec?.businessName });
   };
 
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -274,8 +281,10 @@ export default function Clients() {
 
     if (editRecordId) {
       updateRecordInMonth(editRecordId, recordData);
+      logAction({ user, actionType: 'client.update', entityType: 'client', entityId: editRecordId, entityName: form.businessName, details: { fields: Object.keys(recordData) } });
     } else {
       addRecordToMonth(recordData);
+      logAction({ user, actionType: 'client.create', entityType: 'client', entityName: form.businessName, details: { monthlyPrice: recordData.monthlyPrice } });
     }
     setShowAddModal(false);
   };
@@ -292,6 +301,7 @@ export default function Clients() {
     } else {
       softDeleteRecord(deleteTarget.id);
     }
+    logAction({ user, actionType: 'client.delete', entityType: 'client', entityId: deleteTarget.id, entityName: deleteTarget.businessName, details: { deleteAll, status: deleteTarget.status } });
     setUndoData({
       records: [{
         recordId: deleteTarget.id,
@@ -310,6 +320,7 @@ export default function Clients() {
   const confirmBulkDelete = () => {
     const recordsToDelete = sorted.filter(r => selectedIds.has(r.id));
     recordsToDelete.forEach(r => softDeleteRecord(r.id));
+    logAction({ user, actionType: 'client.bulk_delete', entityType: 'client', entityName: `${recordsToDelete.length} clients`, details: { ids: recordsToDelete.map(r => r.id), names: recordsToDelete.map(r => r.businessName) } });
     setUndoData({
       records: recordsToDelete.map(r => ({
         recordId: r.id,
@@ -361,6 +372,7 @@ export default function Clients() {
       });
       imported++;
     });
+    logAction({ user, actionType: 'client.bulk_import', entityType: 'client', entityName: `${imported} clients`, details: { imported, skipped, errors: errors.length } });
     alert(`${imported} clients imported. ${skipped} duplicates skipped.${errors.length ? '\n\nErrors:\n' + errors.join('\n') : ''}`);
     setShowImportModal(false); setImportPreview(null);
   };
@@ -375,6 +387,7 @@ export default function Clients() {
     if (trashCount === 0) return;
     if (!confirm(`Permanently delete all ${trashCount} trashed client${trashCount > 1 ? 's' : ''}? This cannot be undone.`)) return;
     allTrash.forEach(tr => permanentlyDeleteRecord(tr.id, tr._month, tr._year));
+    logAction({ user, actionType: 'client.permanent_delete', entityType: 'client', entityName: `${trashCount} client(s)`, details: { ids: allTrash.map(t => t.id) } });
   };
 
   return (
@@ -433,6 +446,8 @@ export default function Clients() {
           </div>
         </div>
       )}
+
+      <NotificationPanel />
 
       {/* Config Bar */}
       <div className="config-bar">
@@ -930,6 +945,7 @@ export default function Clients() {
                   {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
+              {getBaseRole(userRole) !== 'pm_editor' && (
               <div className="input-group">
                 <label className="input-label">Handled By (PM)</label>
                 <select className="input-field" value={form.handledBy} onChange={e => setForm({ ...form, handledBy: e.target.value })}>
@@ -938,6 +954,7 @@ export default function Clients() {
                   <option value="Vaishnavi">Vaishnavi</option>
                 </select>
               </div>
+              )}
             </div>
             <div className="input-group">
               <label className="input-label">Notes</label>
@@ -1033,11 +1050,13 @@ export default function Clients() {
                       <div className="trash-item-actions">
                         <button className="btn btn-sm btn-success" onClick={() => {
                           restoreRecord(tr.id, 'Active', tr._month, tr._year);
+                          logAction({ user, actionType: 'client.restore', entityType: 'client', entityId: tr.id, entityName: tr.businessName, details: { restoredStatus: 'Active' } });
                         }}>
                           <RotateCcw size={12} /> Restore to Active
                         </button>
                         <button className="btn btn-sm btn-warning" onClick={() => {
                           restoreRecord(tr.id, 'Cancelled', tr._month, tr._year);
+                          logAction({ user, actionType: 'client.restore', entityType: 'client', entityId: tr.id, entityName: tr.businessName, details: { restoredStatus: 'Cancelled' } });
                         }}>
                           <RotateCcw size={12} /> Restore to Cancelled
                         </button>
@@ -1045,6 +1064,7 @@ export default function Clients() {
                           <button className="btn btn-sm btn-danger" onClick={() => {
                             if (confirm(`Permanently delete "${tr.businessName}" from ${monthLabel} ${tr._year}? This cannot be undone.`)) {
                               permanentlyDeleteRecord(tr.id, tr._month, tr._year);
+                              logAction({ user, actionType: 'client.permanent_delete', entityType: 'client', entityId: tr.id, entityName: tr.businessName, details: { month: tr._month, year: tr._year } });
                             }
                           }}>
                             <Trash2 size={12} /> Delete Forever

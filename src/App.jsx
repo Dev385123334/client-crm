@@ -12,6 +12,8 @@ import Forecast from './pages/Forecast';
 import Integrations from './pages/Integrations';
 import Settings from './pages/Settings';
 import ClientPM from './pages/ClientPM';
+import AuditLog from './pages/AuditLog';
+import Scaling from './pages/Scaling';
 
 function App() {
   return (
@@ -31,6 +33,8 @@ function App() {
               <Route path="/integrations" element={<AuthGuard><Integrations /></AuthGuard>} />
               <Route path="/settings" element={<AuthGuard><Settings /></AuthGuard>} />
               <Route path="/client-pm" element={<AuthGuard><ClientPM /></AuthGuard>} />
+              <Route path="/audit-log" element={<AuthGuard><AuditLog /></AuthGuard>} />
+              <Route path="/scaling" element={<AuthGuard><Scaling /></AuthGuard>} />
             </Routes>
           </Layout>
         } />
