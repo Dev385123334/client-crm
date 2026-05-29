@@ -26,7 +26,7 @@ export async function getUserRole(userId) {
     .from('user_roles')
     .select('role')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
   if (error || !data) return null;
   return data.role;
 }

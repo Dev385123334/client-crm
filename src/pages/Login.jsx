@@ -1,7 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import { signIn, signUp, createUserRole, getUserRole, getSession } from '../supabase/auth';
+import { signIn, signUp, getUserRole, createUserRole } from '../supabase/auth';
 import { Eye, EyeOff, LogIn, BarChart3, UserPlus } from 'lucide-react';
 import './Login.css';
 
@@ -19,7 +19,6 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState('pm_editor');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -30,7 +29,6 @@ export default function Login() {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
-    setSelectedRole('pm_editor');
     setError('');
     setSuccess('');
     setFieldErrors({});
@@ -70,12 +68,25 @@ export default function Login() {
     }
 
     const userId = result.data.user.id;
-    const role = await getUserRole(userId);
 
-    if (role) {
-      localStorage.setItem('crm_user_role', role);
-      await fetchRole(userId);
+    let role = await getUserRole(userId);
+
+    // Fallback: assign role for users created before the trigger existed
+    if (!role) {
+      const assignResult = await createUserRole(userId, email, 'pm_editor');
+      if (!assignResult.error) {
+        role = await getUserRole(userId);
+      }
     }
+
+    if (!role) {
+      setError('Your account has no assigned role. Contact an admin.');
+      setLoading(false);
+      return;
+    }
+
+    localStorage.setItem('crm_user_role', role);
+    await fetchRole(userId);
 
     const target = roleRoutes[role] || '/clients';
     navigate(target, { replace: true });
@@ -100,24 +111,22 @@ export default function Login() {
 
     const userId = result.data.user.id;
 
-    // Ensure session is established before making RPC call
-    const session = await getSession();
-    if (!session) {
-      setError('Account created but could not establish session. Try signing in.');
+    // Wait for the database trigger to create the user_roles entry
+    let assignedRole = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      assignedRole = await getUserRole(userId);
+      if (assignedRole) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (assignedRole) {
+      setSuccess('Account created! An admin will assign your role. You can now sign in.');
+    } else {
+      setError('Account created but role could not be assigned. Please try signing in, then contact an admin.');
       setLoading(false);
       return;
     }
 
-    const roleResult = await createUserRole(userId, email, selectedRole);
-
-    if (roleResult.error) {
-      console.error('Role assignment error:', roleResult.error);
-      setError(`Account created but role could not be assigned: ${roleResult.error.message || 'Unknown error'}. Contact an admin.`);
-      setLoading(false);
-      return;
-    }
-
-    setSuccess('Account created! You can now sign in.');
     setLoading(false);
     setMode('login');
     setPassword('');
@@ -203,23 +212,6 @@ export default function Login() {
                 onChange={e => { setConfirmPassword(e.target.value); setFieldErrors(prev => ({ ...prev, confirmPassword: '' })); }}
               />
               {fieldErrors.confirmPassword && <span className="field-error">{fieldErrors.confirmPassword}</span>}
-            </div>
-          )}
-
-          {mode === 'register' && (
-            <div className="input-group">
-              <label className="input-label" htmlFor="role">Role</label>
-              <select
-                id="role"
-                className="input-field"
-                value={selectedRole}
-                onChange={e => setSelectedRole(e.target.value)}
-              >
-                <option value="pm_editor">PM Editor (Client Management)</option>
-                <option value="hr_editor">HR Editor (Expense Management)</option>
-                <option value="admin">Admin (Full Access)</option>
-              </select>
-              <span className="role-hint">The first user ever can be admin. After that, only admins can create other admins.</span>
             </div>
           )}
 
