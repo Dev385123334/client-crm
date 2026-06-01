@@ -26,7 +26,7 @@ export function formatDate(isoDate) {
 // Calculate tenure strictly based on billing cycle (month and year)
 export function calculateTenure(onboardingDate, currentMonth, currentYear) {
   if (!onboardingDate) return { text: '—', months: 0 };
-  
+
   const [year, month] = onboardingDate.split('-').map(Number);
   const curMonth = parseInt(currentMonth);
   const curYear = parseInt(currentYear);
@@ -38,7 +38,7 @@ export function calculateTenure(onboardingDate, currentMonth, currentYear) {
 
   const tenureMonths = ((curYear - year) * 12) + (curMonth - month) + 1;
   const finalMonths = Math.max(1, tenureMonths);
-  
+
   return { text: `${finalMonths} months`, months: finalMonths };
 }
 
@@ -53,7 +53,7 @@ export function getPaymentAlert(client, currentMonth, currentYear) {
   const dueDay = Math.min(onboardDay, lastDayOfMonth);
 
   const dueDate = new Date(viewYear, viewMonth - 1, dueDay);
-  
+
   // Real today (start of day)
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -70,7 +70,7 @@ export function getPaymentStatus(client, payments, currentMonth, currentYear) {
   const p = payments.find(
     p => p.clientId === client.id && p.month === currentMonth && p.year === currentYear
   );
-  
+
   if (p && p.receivedAmount > 0) {
     const net = (p.receivedAmount || 0) - (p.refundAmount || 0) - (p.chargebackAmount || 0);
     return {
@@ -150,6 +150,26 @@ export const EXPENSE_CATEGORIES = [
 export const CLIENT_STATUSES = ['Active', 'Paused', 'Cancelled'];
 export const STATUS_NOTES = ['None', 'Requested cancellation', 'No activity', 'Other'];
 export const PAYMENT_METHODS = ['Stripe', 'PayPal', 'Bank Transfer', 'Manual Invoice'];
+
+export const PMS = [
+  { name: 'Pankaj', role: 'pm_editor' },
+  { name: 'Vaishnavi', role: 'pm1_editor' },
+  { name: 'Future PM', role: 'pm2_editor' },
+];
+
+export function getPmName(role) {
+  const pm = PMS.find(p => p.role === role);
+  return pm ? pm.name : role;
+}
+
+export function getPmRole(name) {
+  const pm = PMS.find(p => p.name === name);
+  return pm ? pm.role : name;
+}
+
+export function getPmNames() {
+  return PMS.map(p => p.name);
+}
 
 // Normalize a role name (e.g. "pm2_editor") to its base permission set
 export function getBaseRole(role) {

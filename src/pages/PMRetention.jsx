@@ -1,8 +1,8 @@
 import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../context/AppContext';
-import { MONTH_NAMES } from '../utils/helpers';
+import { MONTH_NAMES, PMS } from '../utils/helpers';
 
-const PMS = ['Pankaj', 'Vaishnavi', 'Unassigned'];
+const PM_NAMES = [...PMS.map(p => p.name), 'Unassigned'];
 
 function getMonthKey(month, year) {
   return `${year}-${String(month).padStart(2, '0')}`;
@@ -147,7 +147,7 @@ export default function PMRetention() {
       const prevKey = getMonthKey(prev.month, prev.year);
       const prevRecords = monthlyRecords[prevKey] || [];
 
-      for (const pm of PMS) {
+      for (const pm of PM_NAMES) {
         const activePrev = prevRecords.filter(r => !r.isDeleted && r.status === 'Active' && (r.handledBy || 'Unassigned') === pm);
         const activeCur = records.filter(r => !r.isDeleted && r.status === 'Active' && (r.handledBy || 'Unassigned') === pm);
         const startCount = activePrev.length;

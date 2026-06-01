@@ -1,14 +1,15 @@
 import React, { useContext, useState, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { AppContext } from '../context/AppContext';
+import { getPmName, getPmRole, getPmNames, PMS } from '../utils/helpers';
 import { X, UserPlus } from 'lucide-react';
 import './Settings.css';
 
 export default function ClientPM() {
   const { user } = useContext(AuthContext);
   const { monthlyRecords, assignments, saveAssignments, deleteAssignment, logAction } = useContext(AppContext);
-  const [saved, setSaved] = useState(false);
   const [selectedPM, setSelectedPM] = useState({});
+  const pmNames = useMemo(() => getPmNames(), []);
 
   const allClients = useMemo(() => {
     const seen = new Set();
@@ -30,13 +31,14 @@ export default function ClientPM() {
     assignments.filter(a => a.businessName === businessName);
 
   const handleAdd = async (businessName) => {
-    const pm = selectedPM[businessName];
-    if (!pm || !pm.trim()) return;
-    const exists = assignments.some(a => a.businessName === businessName && a.assignedPm === pm.trim());
+    const pmName = selectedPM[businessName];
+    if (!pmName) return;
+    const role = getPmRole(pmName);
+    const exists = assignments.some(a => a.businessName === businessName && a.assignedPm === role);
     if (exists) return;
-    const newAssign = { id: crypto.randomUUID(), businessName, assignedPm: pm.trim() };
+    const newAssign = { id: crypto.randomUUID(), businessName, assignedPm: role };
     await saveAssignments([...assignments, newAssign]);
-    logAction({ user, actionType: 'assignment.create', entityType: 'assignment', entityId: newAssign.id, entityName: businessName, details: { assignedPm: pm.trim() } });
+    logAction({ user, actionType: 'assignment.create', entityType: 'assignment', entityId: newAssign.id, entityName: businessName, details: { assignedPm: role } });
     setSelectedPM(prev => ({ ...prev, [businessName]: '' }));
   };
 
@@ -44,11 +46,6 @@ export default function ClientPM() {
     const assign = assignments.find(a => a.id === id);
     await deleteAssignment(id);
     logAction({ user, actionType: 'assignment.delete', entityType: 'assignment', entityId: id, entityName: assign?.businessName, details: { assignedPm: assign?.assignedPm } });
-  };
-
-  const handleSave = async () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   if (allClients.length === 0) {
@@ -64,11 +61,10 @@ export default function ClientPM() {
     <div className="settings-page">
       <div className="settings-header">
         <h1>Client-PM Assignments</h1>
-        {saved && <span className="save-badge">Saved</span>}
       </div>
 
       <div className="settings-card">
-        <p className="settings-description">Assign which PM editors can see each client. Admin always sees everything.</p>
+        <p className="settings-description">Assign which PM can see each client. Admin always sees everything.</p>
         <div className="assignments-table">
           <div className="assignments-header">
             <span className="assignments-col-client">Client</span>
@@ -90,7 +86,7 @@ export default function ClientPM() {
                     <div className="pm-tags">
                       {clientAssigns.map(a => (
                         <span key={a.id} className="pm-tag">
-                          {a.assignedPm}
+                          {getPmName(a.assignedPm)}
                           <button className="pm-tag-remove" onClick={() => handleDelete(a.id)}><X size={12} /></button>
                         </span>
                       ))}
@@ -99,15 +95,20 @@ export default function ClientPM() {
                 </div>
                 <div className="assignments-col-action">
                   <div className="pm-add-row">
-                    <input
+                    <select
                       className="input-field"
-                      style={{ width: 140 }}
-                      placeholder="e.g. pm1_editor"
+                      style={{ width: 150 }}
                       value={selectedPM[client.businessName] || ''}
                       onChange={e => setSelectedPM(prev => ({ ...prev, [client.businessName]: e.target.value }))}
-                      onKeyDown={e => { if (e.key === 'Enter') handleAdd(client.businessName); }}
-                    />
-                    <button className="btn-icon" onClick={() => handleAdd(client.businessName)} title="Add PM">
+                    >
+                      <option value="">Select PM...</option>
+                      {pmNames.map(name => (
+                        <option key={name} value={name} disabled={clientAssigns.some(a => getPmName(a.assignedPm) === name)}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <button className="btn-icon" onClick={() => handleAdd(client.businessName)} title="Add PM" disabled={!selectedPM[client.businessName]}>
                       <UserPlus size={16} />
                     </button>
                   </div>

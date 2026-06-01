@@ -1,7 +1,7 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
-import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole } from '../utils/helpers';
+import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole, getPmNames, PMS } from '../utils/helpers';
 import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
 import FilterBar from '../components/FilterBar/FilterBar';
 import NotificationPanel from '../components/NotificationPanel/NotificationPanel';
@@ -950,8 +950,7 @@ export default function Clients() {
                 <label className="input-label">Handled By (PM)</label>
                 <select className="input-field" value={form.handledBy} onChange={e => setForm({ ...form, handledBy: e.target.value })}>
                   <option value="Unassigned">Unassigned</option>
-                  <option value="Pankaj">Pankaj</option>
-                  <option value="Vaishnavi">Vaishnavi</option>
+                  {PMS.map(pm => <option key={pm.name} value={pm.name}>{pm.name}</option>)}
                 </select>
               </div>
               )}
