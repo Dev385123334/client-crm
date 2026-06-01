@@ -375,6 +375,50 @@ export const AppProvider = ({ children }) => {
     ensureMonthExists(currentMonth, currentYear);
   }, [currentMonth, currentYear, ensureMonthExists]);
 
+  const carryOverRecurringExpenses = useCallback((month, year) => {
+    setExpenses(prev => {
+      const key = `${year}-${month}`;
+      const hasRecurring = prev.some(e => e.month === month && e.year === year && e.frequency === 'Monthly Recurring');
+      if (hasRecurring) return prev;
+
+      const monthsMap = {};
+      prev.forEach(e => {
+        const k = `${e.year}-${e.month}`;
+        if (!monthsMap[k]) monthsMap[k] = [];
+        monthsMap[k].push(e);
+      });
+      const targetVal = parseInt(year) * 12 + parseInt(month);
+      const prevKeys = Object.keys(monthsMap)
+        .map(k => ({ key: k, val: (([y, m]) => parseInt(y) * 12 + parseInt(m))(k.split('-')) }))
+        .filter(({ val }) => val < targetVal)
+        .sort((a, b) => b.val - a.val);
+
+      if (prevKeys.length === 0) return prev;
+      const sourceKey = prevKeys[0].key;
+      const sourceExpenses = monthsMap[sourceKey];
+      const recurring = sourceExpenses.filter(e => e.frequency === 'Monthly Recurring');
+      if (recurring.length === 0) return prev;
+
+      const newExpenses = recurring.map(e => ({
+        id: uuidv4(),
+        name: e.name,
+        amount: e.amount,
+        category: e.category,
+        frequency: e.frequency,
+        date: `${year}-${month}-01`,
+        status: e.status || 'Paid',
+        notes: e.notes || '',
+        month,
+        year
+      }));
+      return [...prev, ...newExpenses];
+    });
+  }, []);
+
+  useEffect(() => {
+    carryOverRecurringExpenses(currentMonth, currentYear);
+  }, [currentMonth, currentYear, carryOverRecurringExpenses]);
+
   const deleteExpenses = useCallback(async (ids) => {
     setExpenses(prev => prev.filter(e => !ids.includes(e.id)));
     await deleteExpensesFromDB(ids);
@@ -470,7 +514,7 @@ export const AppProvider = ({ children }) => {
       taxRate, setTaxRate,
       convertToINR, formatUSD, formatINR,
       assignments, saveAssignments, deleteAssignment,
-      auditLogs, logAction, refreshAuditLogs
+      auditLogs, setAuditLogs, logAction, refreshAuditLogs
     }}>
       {children}
     </AppContext.Provider>

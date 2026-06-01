@@ -260,6 +260,11 @@ export async function deleteAuditLog(id) {
   await supabase.from('audit_logs').delete().eq('id', id);
 }
 
+export async function deleteAuditLogs(ids) {
+  if (!isSupabaseConfigured() || ids.length === 0) return;
+  await supabase.from('audit_logs').delete().in('id', ids);
+}
+
 export async function migrateFromLocalStorage() {
   if (!isSupabaseConfigured()) return false;
   const loadLS = (key, def) => {

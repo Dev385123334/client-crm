@@ -27,6 +27,9 @@ export default function Expenses() {
   EXPENSE_CATEGORIES.forEach(cat => { grouped[cat] = 0; });
   monthExpenses.forEach(e => { grouped[e.category] = (grouped[e.category] || 0) + e.amount; });
   const totalExpenses = monthExpenses.reduce((s, e) => s + e.amount, 0);
+  const fixedMonthlyRecurring = monthExpenses
+    .filter(e => e.frequency === 'Monthly Recurring')
+    .reduce((s, e) => s + e.amount, 0);
 
   const [form, setForm] = useState({ name: '', amount: '', category: 'Salaries', frequency: 'Monthly Recurring', date: '', status: 'Paid', notes: '' });
 
@@ -236,6 +239,10 @@ export default function Expenses() {
               <div key={cat} className="summary-row"><span>{cat}</span><span className="font-semibold">{formatINR(grouped[cat])}</span></div>
             ))}
             <div className="summary-total"><span>TOTAL EXPENSES</span><span>{formatINR(totalExpenses)}</span></div>
+            <div className="summary-row" style={{ borderTop: '1px dashed var(--border-color)', paddingTop: 8, marginTop: 8 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Fixed Monthly Recurring</span>
+              <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600 }}>{formatINR(fixedMonthlyRecurring)}</span>
+            </div>
           </div>
         </div>
         <div className="card">
