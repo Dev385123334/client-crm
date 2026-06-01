@@ -377,27 +377,30 @@ export const AppProvider = ({ children }) => {
 
   const carryOverRecurringExpenses = useCallback((month, year) => {
     setExpenses(prev => {
-      const key = `${year}-${month}`;
-      const hasRecurring = prev.some(e => e.month === month && e.year === year && e.frequency === 'Monthly Recurring');
-      if (hasRecurring) return prev;
+      const targetVal = parseInt(year) * 12 + parseInt(month);
+
+      const afterRemoval = prev.filter(e => {
+        const sameMonth = e.month === month && e.year === year;
+        return !(sameMonth && e.carriedOver);
+      });
 
       const monthsMap = {};
-      prev.forEach(e => {
+      afterRemoval.forEach(e => {
         const k = `${e.year}-${e.month}`;
         if (!monthsMap[k]) monthsMap[k] = [];
         monthsMap[k].push(e);
       });
-      const targetVal = parseInt(year) * 12 + parseInt(month);
+
       const prevKeys = Object.keys(monthsMap)
         .map(k => ({ key: k, val: (([y, m]) => parseInt(y) * 12 + parseInt(m))(k.split('-')) }))
         .filter(({ val }) => val < targetVal)
         .sort((a, b) => b.val - a.val);
 
-      if (prevKeys.length === 0) return prev;
+      if (prevKeys.length === 0) return afterRemoval;
       const sourceKey = prevKeys[0].key;
       const sourceExpenses = monthsMap[sourceKey];
       const recurring = sourceExpenses.filter(e => e.frequency === 'Monthly Recurring');
-      if (recurring.length === 0) return prev;
+      if (recurring.length === 0) return afterRemoval;
 
       const newExpenses = recurring.map(e => ({
         id: uuidv4(),
@@ -408,10 +411,11 @@ export const AppProvider = ({ children }) => {
         date: `${year}-${month}-01`,
         status: e.status || 'Paid',
         notes: e.notes || '',
+        carriedOver: true,
         month,
         year
       }));
-      return [...prev, ...newExpenses];
+      return [...afterRemoval, ...newExpenses];
     });
   }, []);
 

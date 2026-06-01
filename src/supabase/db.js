@@ -125,7 +125,8 @@ export async function loadExpenses() {
     date: row.date,
     status: row.status,
     month: row.month,
-    year: row.year
+    year: row.year,
+    carriedOver: row.carried_over || false
   }));
 }
 
@@ -142,6 +143,7 @@ export async function saveExpenses(expenses) {
     month: e.month,
     year: e.year,
     notes: e.notes || '',
+    carried_over: e.carriedOver || false,
     updated_at: new Date().toISOString()
   }));
   await supabase.from('expenses').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });

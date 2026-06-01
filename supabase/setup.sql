@@ -58,9 +58,19 @@ create table if not exists expenses (
   status text not null default 'Paid',
   month text not null,
   year text not null,
+  carried_over boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Add carried_over column if missing (for existing databases)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'expenses' and column_name = 'carried_over') then
+    alter table expenses add column carried_over boolean not null default false;
+  end if;
+end
+$$;
 
 create index if not exists idx_expenses_month_year on expenses(month, year);
 

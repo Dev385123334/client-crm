@@ -15,6 +15,7 @@ function loadFromLS(key, def) {
 
 function resolveSheetUrl(url) {
   if (/\/pub\?/.test(url) || /\/pub$/.test(url)) return url;
+  if (/\/export\?/.test(url)) return url;
   const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
   if (!match) return null;
   return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
@@ -82,10 +83,16 @@ export default function Integrations() {
       }
 
       const text = await res.text();
+
+      if (/<html|<head|<body/i.test(text)) {
+        throw new Error('Received HTML instead of CSV. Publish the sheet: File → Share → Publish to web → CSV');
+      }
+
       const parsed = Papa.parse(text, { header: false, skipEmptyLines: true });
 
       if (parsed.data.length < 2) {
-        throw new Error('Sheet appears empty');
+        const preview = text.slice(0, 200).replace(/\n/g, '↵');
+        throw new Error(`Sheet appears empty (${parsed.data.length} row${parsed.data.length === 1 ? '' : 's'}). First 200 chars: "${preview}"`);
       }
 
       if (type === 'client') {
