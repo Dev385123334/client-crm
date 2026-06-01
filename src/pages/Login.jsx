@@ -246,8 +246,7 @@ export default function Login() {
         <div className="login-footer">
           {mode === 'login' ? (
             <span>
-              Don't have an account?{' '}
-              <button className="link-btn" onClick={() => switchMode('register')}>Create one</button>
+
             </span>
           ) : (
             <span>
