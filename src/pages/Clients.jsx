@@ -14,7 +14,7 @@ export default function Clients() {
   const canDelete = getBaseRole(userRole) === 'admin';
 
   const {
-    currentMonthRecords, currentMonthActive, currentMonthCancelled, currentMonthTrash,
+    currentMonthRecords, currentMonthTrash,
     monthlyRecords,
     addRecordToMonth, updateRecordInMonth, softDeleteRecord,
     softDeleteRecordFromAllMonths, restoreRecord, permanentlyDeleteRecord,
@@ -78,8 +78,8 @@ export default function Clients() {
   const records = baseRole === 'pm_editor' && userAssignments.length > 0
     ? currentMonthRecords.filter(r => userAssignments.some(a => a.businessName === r.businessName))
     : currentMonthRecords;
-  const activeRecords = currentMonthActive;
-  const cancelledRecords = currentMonthCancelled;
+  const activeRecords = records.filter(r => r.status === 'Active');
+  const cancelledRecords = records.filter(r => r.status === 'Cancelled');
 
   const activeCount = activeRecords.length;
   const totalMRR = activeRecords.reduce((s, r) => s + r.monthlyPrice, 0);
