@@ -180,6 +180,7 @@ export const AppProvider = ({ children }) => {
       setExpenses(loadFromLS('profitpilot_expenses', []));
       setTeam(loadFromLS('profitpilot_team', []));
       setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
+      setAssignments(loadFromLS('profitpilot_assignments', []));
     }
 
     init();
@@ -235,6 +236,11 @@ export const AppProvider = ({ children }) => {
       localStorage.setItem('profitpilot_syncLogs', JSON.stringify(syncLogs));
     }
   }, [dataReady, syncLogs]);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    localStorage.setItem('profitpilot_assignments', JSON.stringify(assignments));
+  }, [dataReady, assignments]);
 
   const monthKey = `${currentYear}-${currentMonth}`;
 
