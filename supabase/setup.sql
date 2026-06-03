@@ -72,6 +72,15 @@ begin
 end
 $$;
 
+-- Add notes column if missing
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'expenses' and column_name = 'notes') then
+    alter table expenses add column notes text not null default '';
+  end if;
+end
+$$;
+
 create index if not exists idx_expenses_month_year on expenses(month, year);
 
 -- 5. Team members table
@@ -107,7 +116,7 @@ where not exists (select 1 from settings);
 create table if not exists user_roles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
-  role text not null check (role = 'admin' or role = 'hr_editor' or role ~ '^pm\d*_editor$'),
+  role text not null check (role = 'admin' or role = 'hr_editor' or role ~ '^pm[0-9]*_editor$'),
   created_at timestamptz default now()
 );
 
@@ -243,7 +252,7 @@ begin
   v_role := new.raw_app_meta_data ->> 'role';
 
   -- Default to pm_editor if invalid or missing
-  if v_role is null or (v_role not in ('admin', 'hr_editor') and v_role !~ '^pm\d*_editor$') then
+  if v_role is null or (v_role not in ('admin', 'hr_editor') and v_role !~ '^pm[0-9]*_editor$') then
     v_role := 'pm_editor';
   end if;
 

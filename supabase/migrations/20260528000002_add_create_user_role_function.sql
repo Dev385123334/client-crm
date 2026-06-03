@@ -68,7 +68,7 @@ DECLARE
 BEGIN
   v_role := NEW.raw_app_meta_data ->> 'role';
 
-  IF v_role IS NULL OR (v_role NOT IN ('admin', 'hr_editor') AND v_role !~ '^pm\d*_editor$') THEN
+  IF v_role IS NULL OR (v_role NOT IN ('admin', 'hr_editor') AND v_role !~ '^pm[0-9]*_editor$') THEN
     v_role := 'pm_editor';
   END IF;
 

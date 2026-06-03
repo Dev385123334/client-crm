@@ -126,6 +126,7 @@ export async function loadExpenses() {
     status: row.status,
     month: row.month,
     year: row.year,
+    notes: row.notes || '',
     carriedOver: row.carried_over || false
   }));
 }
@@ -142,11 +143,11 @@ export async function saveExpenses(expenses) {
     status: e.status,
     month: e.month,
     year: e.year,
-    notes: e.notes || '',
     carried_over: e.carriedOver || false,
     updated_at: new Date().toISOString()
   }));
-  await supabase.from('expenses').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  const { error } = await supabase.from('expenses').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  if (error) console.error('Failed to save expenses to DB:', error);
 }
 
 export async function loadTeam() {
