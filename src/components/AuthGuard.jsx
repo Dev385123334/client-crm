@@ -5,8 +5,8 @@ import { getBaseRole } from '../utils/helpers';
 
 const roleAllowedRoutes = {
   admin: null,
-  pm_editor: ['/clients'],
-  hr_editor: ['/expenses', '/team', '/scaling'],
+  pm_editor: ['/clients', '/integrations'],
+  hr_editor: ['/expenses', '/team', '/scaling', '/integrations'],
 };
 
 const roleDefaultRoutes = {

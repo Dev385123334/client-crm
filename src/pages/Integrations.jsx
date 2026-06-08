@@ -1,6 +1,8 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { parseGoogleSheetDate, parseUSDAmount, parseINRAmount, categorizeExpense } from '../utils/helpers';
+import { AuthContext } from '../context/AuthContext';
+import { parseGoogleSheetDate, parseUSDAmount, parseINRAmount, categorizeExpense, parseTabName, getBaseRole } from '../utils/helpers';
+import { fetchSheetTabs, parseSheetUrl, resolveSheetUrl } from '../utils/sheets';
 import { v4 as uuidv4 } from 'uuid';
 import { Link2, RefreshCw, Clock, Pause, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
 import Papa from 'papaparse';
@@ -11,14 +13,6 @@ function loadFromLS(key, def) {
     const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : def;
   } catch { return def; }
-}
-
-function resolveSheetUrl(url) {
-  if (/\/pub\?/.test(url) || /\/pub$/.test(url)) return url;
-  if (/\/export\?/.test(url)) return url;
-  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  if (!match) return null;
-  return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
 }
 
 function parseExpenseDate(dateStr) {
@@ -34,13 +28,25 @@ function parseExpenseDate(dateStr) {
   return `${y}-${m}-${d}`;
 }
 
+const envApiKey = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GOOGLE_SHEETS_API_KEY : '';
+
 export default function Integrations() {
   const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses } = useContext(AppContext);
+  const { userRole } = useContext(AuthContext);
+  const baseRole = getBaseRole(userRole);
+  const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor';
+  const canSeeExpense = baseRole === 'admin' || baseRole === 'hr_editor';
 
   const [clientSheet, setClientSheet] = useState(() => loadFromLS('profitpilot_clientSheet', { url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' }));
-  const [expenseSheet, setExpenseSheet] = useState(() => loadFromLS('profitpilot_expenseSheet', { url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' }));
+  const [expenseSheet, setExpenseSheet] = useState(() => {
+    const saved = loadFromLS('profitpilot_expenseSheet', null);
+    const defaults = { url: '', apiKey: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
+    return saved ? { ...defaults, ...saved } : defaults;
+  });
   const [syncFrequency, setSyncFrequency] = useState(30);
   const [setupStep, setSetupStep] = useState(null);
+  const [setupError, setSetupError] = useState('');
+  const [syncProgress, setSyncProgress] = useState('');
 
   useEffect(() => {
     localStorage.setItem('profitpilot_clientSheet', JSON.stringify(clientSheet));
@@ -63,39 +69,163 @@ export default function Integrations() {
     const sheet = type === 'client' ? clientSheet : expenseSheet;
     const setSheet = type === 'client' ? setClientSheet : setExpenseSheet;
     const label = type === 'client' ? 'Client Sheet' : 'Expense Sheet';
-    const csvUrl = resolveSheetUrl(sheet.url);
 
-    if (!csvUrl) {
-      addLog(label, 'Invalid sheet URL', 'error');
-      return;
-    }
+    if (type === 'expense') {
+      const csvUrl = resolveSheetUrl(sheet.url);
+      if (!csvUrl) {
+        addLog(label, 'Invalid sheet URL', 'error');
+        return;
+      }
 
-    setSheet(prev => ({ ...prev, syncing: true, status: 'syncing', error: '' }));
+      const sheetInfo = parseSheetUrl(sheet.url);
+      if (!sheetInfo) {
+        addLog(label, 'Could not extract sheet ID from URL', 'error');
+        return;
+      }
 
-    try {
-      const res = await fetch(csvUrl);
+      const apiKey = envApiKey || sheet.apiKey;
+      if (!apiKey) {
+        addLog(label, 'Google Sheets API key required. Set VITE_GOOGLE_SHEETS_API_KEY in .env or enter it in setup.', 'error');
+        return;
+      }
 
-      if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
-          throw new Error('Sheet is private. Publish it: File → Share → Publish to web → CSV');
+      setSheet(prev => ({ ...prev, syncing: true, status: 'syncing', error: '' }));
+      setSyncProgress('');
+
+      try {
+        setSyncProgress('Detecting sheet tabs...');
+        const tabs = await fetchSheetTabs(sheetInfo.id, apiKey);
+        const monthTabs = [];
+        for (const tab of tabs) {
+          const parsed = parseTabName(tab.title);
+          if (parsed) monthTabs.push({ ...tab, parsed });
         }
-        throw new Error(`HTTP ${res.status}: Could not access sheet`);
+
+        if (monthTabs.length === 0) {
+          throw new Error(`No tabs found matching "Month YYYY" format. Found tabs: ${tabs.map(t => t.title).join(', ') || 'none'}`);
+        }
+
+        let totalImported = 0, totalSkipped = 0;
+        const allNew = [];
+        const tabResults = [];
+
+        for (const monthTab of monthTabs) {
+          setSyncProgress(`Syncing ${monthTab.title}...`);
+          const tabUrl = resolveSheetUrl(sheet.url, monthTab.gid);
+          if (!tabUrl) continue;
+
+          const res = await fetch(tabUrl);
+          if (!res.ok) {
+            tabResults.push(`${monthTab.title}: HTTP ${res.status}`);
+            continue;
+          }
+
+          const text = await res.text();
+          if (/<html|<head|<body/i.test(text)) {
+            tabResults.push(`${monthTab.title}: Private sheet`);
+            continue;
+          }
+
+          const parsed = Papa.parse(text, { header: false, skipEmptyLines: true });
+          if (parsed.data.length < 2) {
+            tabResults.push(`${monthTab.title}: Empty`);
+            continue;
+          }
+
+          let imported = 0, skipped = 0;
+          const startRow = parseExpenseDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
+          for (let i = startRow; i < parsed.data.length; i++) {
+            const row = parsed.data[i];
+            const dateRaw = String(row[0] || '').trim();
+            const name = String(row[1] || '').trim();
+            const amountRaw = String(row[2] || '').trim();
+            if (!name || !amountRaw) { skipped++; continue; }
+            const amount = parseINRAmount(amountRaw);
+            if (!amount) { skipped++; continue; }
+            const isoDate = parseExpenseDate(dateRaw) || `${monthTab.parsed.year}-${monthTab.parsed.month}-01`;
+            const isDup = expenses.some(e => e.date === isoDate && e.name === name && e.amount === amount);
+            if (isDup) { skipped++; continue; }
+            allNew.push({
+              id: uuidv4(),
+              name,
+              amount,
+              category: categorizeExpense(name),
+              frequency: 'One-Time',
+              date: isoDate,
+              status: 'Paid',
+              notes: '',
+              month: monthTab.parsed.month,
+              year: monthTab.parsed.year
+            });
+            imported++;
+          }
+          tabResults.push(`${monthTab.title}: ${imported} imported, ${skipped} skipped`);
+          totalImported += imported;
+          totalSkipped += skipped;
+        }
+
+        if (allNew.length > 0) {
+          setExpenses(prev => [...prev, ...allNew]);
+        }
+
+        setSheet(prev => ({
+          ...prev,
+          syncing: false,
+          status: 'active',
+          lastSync: new Date().toLocaleString(),
+          foundTabs: monthTabs.map(t => t.title),
+          error: ''
+        }));
+
+        const detail = tabResults.join(' | ');
+        addLog(label, totalImported > 0
+          ? `Synced ${totalImported} expenses across ${monthTabs.length} month(s). ${detail}`
+          : `No new expenses. ${detail}`, totalImported > 0 ? 'success' : 'info');
+        setSyncProgress('');
+
+      } catch (err) {
+        addLog(label, `Sync failed: ${err.message}`, 'error');
+        setSheet(prev => ({
+          ...prev,
+          syncing: false,
+          status: 'error',
+          lastSync: new Date().toLocaleString(),
+          error: err.message
+        }));
+        setSyncProgress('');
+      }
+    } else {
+      const csvUrl = resolveSheetUrl(sheet.url);
+      if (!csvUrl) {
+        addLog(label, 'Invalid sheet URL', 'error');
+        return;
       }
 
-      const text = await res.text();
+      setSheet(prev => ({ ...prev, syncing: true, status: 'syncing', error: '' }));
 
-      if (/<html|<head|<body/i.test(text)) {
-        throw new Error('Received HTML instead of CSV. Publish the sheet: File → Share → Publish to web → CSV');
-      }
+      try {
+        const res = await fetch(csvUrl);
 
-      const parsed = Papa.parse(text, { header: false, skipEmptyLines: true });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Sheet is private. Publish it: File → Share → Publish to web → CSV');
+          }
+          throw new Error(`HTTP ${res.status}: Could not access sheet`);
+        }
 
-      if (parsed.data.length < 2) {
-        const preview = text.slice(0, 200).replace(/\n/g, '↵');
-        throw new Error(`Sheet appears empty (${parsed.data.length} row${parsed.data.length === 1 ? '' : 's'}). First 200 chars: "${preview}"`);
-      }
+        const text = await res.text();
 
-      if (type === 'client') {
+        if (/<html|<head|<body/i.test(text)) {
+          throw new Error('Received HTML instead of CSV. Publish the sheet: File → Share → Publish to web → CSV');
+        }
+
+        const parsed = Papa.parse(text, { header: false, skipEmptyLines: true });
+
+        if (parsed.data.length < 2) {
+          const preview = text.slice(0, 200).replace(/\n/g, '↵');
+          throw new Error(`Sheet appears empty (${parsed.data.length} row${parsed.data.length === 1 ? '' : 's'}). First 200 chars: "${preview}"`);
+        }
+
         let imported = 0, skipped = 0;
         const startRow = parseGoogleSheetDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
         for (let i = startRow; i < parsed.data.length; i++) {
@@ -138,68 +268,35 @@ export default function Integrations() {
         }
 
         addLog(label, `Synced ${imported} clients (${skipped} rows skipped)`, 'success');
-      } else {
-        let imported = 0, skipped = 0, errors = [];
-        const newExpenses = [];
-        const startRow = parseExpenseDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
-        for (let i = startRow; i < parsed.data.length; i++) {
-          const row = parsed.data[i];
-          const dateRaw = String(row[0] || '').trim();
-          const name = String(row[1] || '').trim();
-          const amountRaw = String(row[2] || '').trim();
-          if (!name || !amountRaw) { skipped++; continue; }
-          const amount = parseINRAmount(amountRaw);
-          if (!amount) { skipped++; continue; }
-          const isoDate = parseExpenseDate(dateRaw) || new Date().toISOString().slice(0, 10);
-          const month = isoDate.slice(5, 7);
-          const year = isoDate.slice(0, 4);
-          const isDup = expenses.some(e => e.date === isoDate && e.name === name && e.amount === amount);
-          if (isDup) { skipped++; continue; }
-          newExpenses.push({
-            id: uuidv4(),
-            name,
-            amount,
-            category: categorizeExpense(name),
-            frequency: 'Monthly Recurring',
-            date: isoDate,
-            status: 'Paid',
-            notes: '',
-            month,
-            year
-          });
-          imported++;
-        }
-        if (newExpenses.length > 0) {
-          setExpenses(prev => [...prev, ...newExpenses]);
-        }
-        addLog(label, imported > 0
-          ? `Imported ${imported} new expense${imported > 1 ? 's' : ''}${skipped > 0 ? ` (${skipped} duplicate${skipped > 1 ? 's' : ''} skipped)` : ''}`
-          : `All ${skipped} expense${skipped > 1 ? 's' : ''} already in system. No new data to import.`, imported > 0 ? 'success' : 'info');
-      }
 
-      setSheet(prev => ({
-        ...prev,
-        syncing: false,
-        status: 'active',
-        lastSync: new Date().toLocaleString(),
-        error: ''
-      }));
-    } catch (err) {
-      addLog(label, `Sync failed: ${err.message}`, 'error');
-      setSheet(prev => ({
-        ...prev,
-        syncing: false,
-        status: 'error',
-        lastSync: new Date().toLocaleString(),
-        error: err.message
-      }));
+        setSheet(prev => ({
+          ...prev,
+          syncing: false,
+          status: 'active',
+          lastSync: new Date().toLocaleString(),
+          error: ''
+        }));
+      } catch (err) {
+        addLog(label, `Sync failed: ${err.message}`, 'error');
+        setSheet(prev => ({
+          ...prev,
+          syncing: false,
+          status: 'error',
+          lastSync: new Date().toLocaleString(),
+          error: err.message
+        }));
+      }
     }
   }
 
   const disconnectSheet = (type) => {
     const setSheet = type === 'client' ? setClientSheet : setExpenseSheet;
     const label = type === 'client' ? 'Client Sheet' : 'Expense Sheet';
-    setSheet({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
+    if (type === 'client') {
+      setSheet({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
+    } else {
+      setSheet({ url: '', apiKey: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] });
+    }
     addLog(label, 'Sheet disconnected', 'warning');
   };
 
@@ -223,7 +320,7 @@ export default function Integrations() {
       </div>
 
       <div className="sheets-grid">
-        {/* Client Sheet Card */}
+        {canSeeClient && (
         <div className="glass-panel sheet-card">
           <div className="sheet-header">
             <div className="flex items-center gap-2">
@@ -270,13 +367,14 @@ export default function Integrations() {
               </div>
             </div>
           ) : (
-            <button className="btn btn-primary w-full" onClick={() => setSetupStep('client')}>
+            <button className="btn btn-primary w-full" onClick={() => { setSetupStep('client'); setSetupError(''); }}>
               <Link2 size={16} /> Connect Google Sheet
             </button>
           )}
         </div>
+        )}
 
-        {/* Expense Sheet Card */}
+        {canSeeExpense && (
         <div className="glass-panel sheet-card">
           <div className="sheet-header">
             <div className="flex items-center gap-2">
@@ -298,6 +396,25 @@ export default function Integrations() {
                 <Clock size={14} />
                 <span>Last synced: {expenseSheet.lastSync || 'Never'}</span>
               </div>
+              {syncProgress && (
+                <div className="info-row">
+                  <RefreshCw size={14} className="spin" />
+                  <span className="text-sm">{syncProgress}</span>
+                </div>
+              )}
+              {(expenseSheet.foundTabs || []).length > 0 && (
+                <div className="info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                  <span className="text-sm text-muted">Found {(expenseSheet.foundTabs || []).length} month tab(s):</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {expenseSheet.foundTabs.map((tab, i) => (
+                      <span key={i} className="badge badge-success" style={{ fontSize: '0.7rem' }}>{tab}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="info-row">
+                <span className="text-sm text-muted">Status: {expenseSheet.status === 'active' ? 'Active & Syncing' : expenseSheet.status}</span>
+              </div>
               {expenseSheet.error && (
                 <div className="info-row" style={{ color: 'var(--danger)' }}>
                   <XCircle size={14} />
@@ -315,11 +432,12 @@ export default function Integrations() {
               </div>
             </div>
           ) : (
-            <button className="btn btn-primary w-full" onClick={() => setSetupStep('expense')}>
+            <button className="btn btn-primary w-full" onClick={() => { setSetupStep('expense'); setSetupError(''); }}>
               <Link2 size={16} /> Connect Google Sheet
             </button>
           )}
         </div>
+        )}
       </div>
 
       {/* Sync Frequency */}
@@ -334,7 +452,7 @@ export default function Integrations() {
           </select>
         </div>
         <p className="text-muted text-sm" style={{ marginTop: '0.5rem', fontSize: 12 }}>
-          Tip: Sheet must be published to web (File → Share → Publish to web → CSV) for syncing to work
+          Tip: For Expense Sheet, name tabs as <code>Month YYYY</code> (e.g. <code>January 2025</code>) for auto-detection.
         </p>
       </div>
 
@@ -383,24 +501,42 @@ export default function Integrations() {
                 />
               </div>
 
-              <div className="setup-step">
-                <span className="step-number">2</span>
-                <span>Select sheet tab name</span>
-              </div>
-              <div className="input-group">
-                <input
-                  className="input-field"
-                  placeholder={setupStep === 'client' ? 'e.g., Sheet1' : 'e.g., Statement Sheet'}
-                  value={setupStep === 'client' ? clientSheet.tab : expenseSheet.tab}
-                  onChange={e => {
-                    const setSheet = setupStep === 'client' ? setClientSheet : setExpenseSheet;
-                    setSheet(prev => ({ ...prev, tab: e.target.value }));
-                  }}
-                />
-              </div>
+              {setupStep === 'expense' && !envApiKey && (
+                <>
+                  <div className="setup-step">
+                    <span className="step-number">2</span>
+                    <span>Enter your Google Sheets API key</span>
+                  </div>
+                  <div className="input-group">
+                    <input
+                      className="input-field"
+                      placeholder="AIzaSy..."
+                      value={expenseSheet.apiKey}
+                      onChange={e => setExpenseSheet(prev => ({ ...prev, apiKey: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
+
+              {setupStep === 'client' && (
+                <>
+                  <div className="setup-step">
+                    <span className="step-number">2</span>
+                    <span>Select sheet tab name</span>
+                  </div>
+                  <div className="input-group">
+                    <input
+                      className="input-field"
+                      placeholder="e.g., Sheet1"
+                      value={clientSheet.tab}
+                      onChange={e => setClientSheet(prev => ({ ...prev, tab: e.target.value }))}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="setup-step">
-                <span className="step-number">3</span>
+                <span className="step-number">{setupStep === 'client' ? '3' : (envApiKey ? '2' : '3')}</span>
                 <span>Expected column order (A to F)</span>
               </div>
               <div className="column-map glass-panel" style={{ padding: '0.75rem', fontSize: 13 }}>
@@ -415,25 +551,68 @@ export default function Integrations() {
                   </>
                 ) : (
                   <>
-                    <p><b>A</b>: Date</p>
+                    <p><b>A</b>: Date (<code>DD/MM/YYYY</code>)</p>
                     <p><b>B</b>: Expense Name</p>
                     <p><b>C</b>: Amount</p>
+                    <p className="text-muted" style={{ marginTop: 6, fontSize: 11 }}>
+                      Tab names must follow <code>Month YYYY</code> format (e.g. <code>January 2025</code>).
+                      All matching tabs will be detected and synced automatically.
+                    </p>
                   </>
                 )}
               </div>
+
+              {setupError && (
+                <div style={{ color: 'var(--danger)', fontSize: 13, marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(255,0,0,0.08)', borderRadius: 6 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>Connection Error</p>
+                  <p style={{ marginBottom: 4 }}>{setupError}</p>
+                  <p style={{ fontSize: 11, opacity: 0.8 }}>
+                    To fix this, share your sheet publicly:
+                    <br />1. In your sheet, click <b>Share</b> (top-right)
+                    <br />2. Change to <b>"Anyone with the link"</b> → <b>"Viewer"</b>
+                    <br />3. Also go to <b>File → Share → Publish to web</b> → <b>"Entire document"</b> → <b>Publish</b>
+                    <br />4. Then click Enable Sync again
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3" style={{ marginTop: '1.5rem', justifyContent: 'flex-end' }}>
-              <button className="btn btn-secondary" onClick={() => setSetupStep(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => {
+              <button className="btn btn-secondary" onClick={() => { setSetupStep(null); setSetupError(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={async () => {
                 const setSheet = setupStep === 'client' ? setClientSheet : setExpenseSheet;
                 const sheet = setupStep === 'client' ? clientSheet : expenseSheet;
                 if (!sheet.url) return;
-                setSheet(prev => ({ ...prev, connected: true, status: 'active' }));
-                setSetupStep(null);
-                addLog(setupStep === 'client' ? 'Client Sheet' : 'Expense Sheet', 'Sheet connected. Click Sync Now to fetch data.', 'success');
-                // Auto-sync on connect
-                doSync(setupStep);
+                if (setupStep === 'expense') {
+                  const key = envApiKey || sheet.apiKey;
+                  if (!key) return;
+                  const sheetInfo = parseSheetUrl(sheet.url);
+                  if (sheetInfo) {
+                    try {
+                      const tabs = await fetchSheetTabs(sheetInfo.id, key);
+                      const monthTabs = tabs.filter(t => parseTabName(t.title)).map(t => t.title);
+                      setSheet(prev => ({ ...prev, connected: true, status: 'active', foundTabs: monthTabs }));
+                      setSetupStep(null);
+                      setSetupError('');
+                      addLog('Expense Sheet', `Connected. Found ${monthTabs.length} month tab(s): ${monthTabs.join(', ') || 'none'}`, 'success');
+                      doSync('expense');
+                    } catch (err) {
+                      setSetupError(err.message);
+                    }
+                  } else {
+                    setSheet(prev => ({ ...prev, connected: true, status: 'active' }));
+                    setSetupStep(null);
+                    setSetupError('');
+                    addLog('Expense Sheet', 'Sheet connected. Click Sync Now to fetch data.', 'success');
+                    doSync('expense');
+                  }
+                } else {
+                  setSheet(prev => ({ ...prev, connected: true, status: 'active' }));
+                  setSetupStep(null);
+                  setSetupError('');
+                  addLog('Client Sheet', 'Sheet connected. Click Sync Now to fetch data.', 'success');
+                  doSync('client');
+                }
               }}>
                 <Link2 size={16} /> Enable Sync
               </button>

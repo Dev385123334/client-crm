@@ -16,7 +16,7 @@ const allNavItems = [
   { path: '/retention', label: 'PM Retention', icon: UserCheck, roles: ['admin'] },
   { path: '/forecast', label: 'Revenue Forecast', icon: TrendingUp, roles: ['admin'] },
   { path: '/scaling', label: 'Sales Scaling', icon: ScatterChart, roles: ['admin', 'hr_editor'] },
-  { path: '/integrations', label: 'Integrations', icon: Link2, roles: ['admin'] },
+  { path: '/integrations', label: 'Integrations', icon: Link2, roles: ['admin', 'hr_editor', 'pm_editor'] },
   { path: '/client-pm', label: 'Client-PM', icon: UserPlus, roles: ['admin'] },
   { path: '/audit-log', label: 'Audit Log', icon: ClipboardList, roles: ['admin'] },
 ];

@@ -136,6 +136,18 @@ export function parseUSDAmount(amountStr) {
   return parseFloat(String(amountStr).replace(/[$,\s]/g, '')) || 0;
 }
 
+// Parse tab name "Month YYYY" -> { month: '01', year: '2025' } or null
+export function parseTabName(tabName) {
+  if (!tabName) return null;
+  const parts = tabName.trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  const year = parts.pop();
+  const monthName = parts.join(' ');
+  const monthNum = monthNames[monthName];
+  if (!monthNum || !/^\d{4}$/.test(year)) return null;
+  return { month: monthNum, year };
+}
+
 // Month names for display
 export const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
