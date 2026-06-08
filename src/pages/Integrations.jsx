@@ -28,7 +28,7 @@ function parseExpenseDate(dateStr) {
   return `${y}-${m}-${d}`;
 }
 
-const envApiKey = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GOOGLE_SHEETS_API_KEY : '';
+const VITE_GOOGLE_SHEETS_API_KEY = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GOOGLE_SHEETS_API_KEY : '';
 
 export default function Integrations() {
   const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses } = useContext(AppContext);
@@ -40,7 +40,7 @@ export default function Integrations() {
   const [clientSheet, setClientSheet] = useState(() => loadFromLS('profitpilot_clientSheet', { url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' }));
   const [expenseSheet, setExpenseSheet] = useState(() => {
     const saved = loadFromLS('profitpilot_expenseSheet', null);
-    const defaults = { url: '', apiKey: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
+    const defaults = { url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
     return saved ? { ...defaults, ...saved } : defaults;
   });
   const [syncFrequency, setSyncFrequency] = useState(30);
@@ -83,9 +83,8 @@ export default function Integrations() {
         return;
       }
 
-      const apiKey = envApiKey || sheet.apiKey;
-      if (!apiKey) {
-        addLog(label, 'Google Sheets API key required. Set VITE_GOOGLE_SHEETS_API_KEY in .env or enter it in setup.', 'error');
+      if (!VITE_GOOGLE_SHEETS_API_KEY) {
+        addLog(label, 'VITE_GOOGLE_SHEETS_API_KEY is not set in environment. Add it to .env and restart.', 'error');
         return;
       }
 
@@ -94,7 +93,7 @@ export default function Integrations() {
 
       try {
         setSyncProgress('Detecting sheet tabs...');
-        const tabs = await fetchSheetTabs(sheetInfo.id, apiKey);
+        const tabs = await fetchSheetTabs(sheetInfo.id, VITE_GOOGLE_SHEETS_API_KEY);
         const monthTabs = [];
         for (const tab of tabs) {
           const parsed = parseTabName(tab.title);
@@ -295,7 +294,7 @@ export default function Integrations() {
     if (type === 'client') {
       setSheet({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
     } else {
-      setSheet({ url: '', apiKey: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] });
+      setSheet({ url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] });
     }
     addLog(label, 'Sheet disconnected', 'warning');
   };
@@ -501,23 +500,6 @@ export default function Integrations() {
                 />
               </div>
 
-              {setupStep === 'expense' && !envApiKey && (
-                <>
-                  <div className="setup-step">
-                    <span className="step-number">2</span>
-                    <span>Enter your Google Sheets API key</span>
-                  </div>
-                  <div className="input-group">
-                    <input
-                      className="input-field"
-                      placeholder="AIzaSy..."
-                      value={expenseSheet.apiKey}
-                      onChange={e => setExpenseSheet(prev => ({ ...prev, apiKey: e.target.value }))}
-                    />
-                  </div>
-                </>
-              )}
-
               {setupStep === 'client' && (
                 <>
                   <div className="setup-step">
@@ -536,7 +518,7 @@ export default function Integrations() {
               )}
 
               <div className="setup-step">
-                <span className="step-number">{setupStep === 'client' ? '3' : (envApiKey ? '2' : '3')}</span>
+                <span className="step-number">{setupStep === 'client' ? '3' : '2'}</span>
                 <span>Expected column order (A to F)</span>
               </div>
               <div className="column-map glass-panel" style={{ padding: '0.75rem', fontSize: 13 }}>
@@ -575,6 +557,14 @@ export default function Integrations() {
                   </p>
                 </div>
               )}
+              {setupStep === 'expense' && !VITE_GOOGLE_SHEETS_API_KEY && (
+                <div style={{ color: 'var(--warning)', fontSize: 13, marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(255,165,0,0.08)', borderRadius: 6 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>API Key Missing</p>
+                  <p style={{ fontSize: 11, opacity: 0.8 }}>
+                    Set <code>VITE_GOOGLE_SHEETS_API_KEY</code> in your <code>.env</code> file and restart the server.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3" style={{ marginTop: '1.5rem', justifyContent: 'flex-end' }}>
@@ -584,12 +574,11 @@ export default function Integrations() {
                 const sheet = setupStep === 'client' ? clientSheet : expenseSheet;
                 if (!sheet.url) return;
                 if (setupStep === 'expense') {
-                  const key = envApiKey || sheet.apiKey;
-                  if (!key) return;
+                  if (!VITE_GOOGLE_SHEETS_API_KEY) return;
                   const sheetInfo = parseSheetUrl(sheet.url);
                   if (sheetInfo) {
                     try {
-                      const tabs = await fetchSheetTabs(sheetInfo.id, key);
+                      const tabs = await fetchSheetTabs(sheetInfo.id, VITE_GOOGLE_SHEETS_API_KEY);
                       const monthTabs = tabs.filter(t => parseTabName(t.title)).map(t => t.title);
                       setSheet(prev => ({ ...prev, connected: true, status: 'active', foundTabs: monthTabs }));
                       setSetupStep(null);
