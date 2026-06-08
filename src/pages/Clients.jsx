@@ -209,7 +209,7 @@ export default function Clients() {
   const [detailRecord, setDetailRecord] = useState(null);
 
   const [form, setForm] = useState({
-    businessName: '', contactPerson: '', phone: '', email: '',
+    businessName: '', contactPerson: '', phone: '', email: '', website: '',
     monthlyPrice: '', onboardingDate: '', billingStartDate: '',
     status: 'Active', statusDate: '', statusNote: 'None',
     contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
@@ -219,7 +219,7 @@ export default function Clients() {
 
   const openAddModal = () => {
     setForm({
-      businessName: '', contactPerson: '', phone: '', email: '',
+      businessName: '', contactPerson: '', phone: '', email: '', website: '',
       monthlyPrice: '', onboardingDate: '', billingStartDate: '',
       status: 'Active', statusDate: '', statusNote: 'None',
       contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
@@ -237,6 +237,7 @@ export default function Clients() {
       contactPerson: record.contactPerson || '',
       phone: record.phone || '',
       email: record.email || '',
+      website: record.website || '',
       monthlyPrice: record.monthlyPrice,
       onboardingDate: record.onboardingDate,
       billingStartDate: record.billingStartDate || record.onboardingDate,
@@ -262,6 +263,10 @@ export default function Clients() {
     if (!form.businessName) errors.businessName = 'Business name is required';
     if (!form.monthlyPrice) errors.monthlyPrice = 'Monthly price is required';
     if (!form.onboardingDate) errors.onboardingDate = 'Onboarding date is required';
+    if (form.website) {
+      const websitePattern = /^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w\-./?%&=]*)?$/i;
+      if (!websitePattern.test(form.website)) errors.website = 'Enter a valid domain (e.g., example.com)';
+    }
     if (Object.keys(errors).length) { setFormErrors(errors); return; }
     setFormErrors({});
     const billingDate = form.billingStartDate || form.onboardingDate;
@@ -281,6 +286,7 @@ export default function Clients() {
       contactPerson: form.contactPerson,
       phone: form.phone,
       email: form.email,
+      website: form.website,
       monthlyPrice: adjustedPrice,
       onboardingDate: form.onboardingDate,
       billingStartDate: form.billingStartDate || form.onboardingDate,
@@ -708,6 +714,7 @@ export default function Clients() {
                   />
                 </th>
                 <th onClick={() => handleSort('businessName')}>Client Name <ArrowUpDown size={10} /></th>
+                <th>Website</th>
                 <th onClick={() => handleSort('onboardingDate')}>Onboarded <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('billingStartDate')}>Billing <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('tenure')}>Tenure <ArrowUpDown size={10} /></th>
@@ -766,6 +773,13 @@ export default function Clients() {
                           <span className="pm-label">{record.handledBy}</span>
                         )}
                       </div>
+                    </td>
+                    <td>
+                      {record.website ? (
+                        <a href={record.website.startsWith('http') ? record.website : `https://${record.website}`} target="_blank" rel="noopener noreferrer" className="text-xs" style={{ color: 'var(--primary)' }} onClick={e => e.stopPropagation()}>
+                          {record.website.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}
+                        </a>
+                      ) : <span className="text-muted text-xs">—</span>}
                     </td>
                     <td>{formatDate(record.onboardingDate)}</td>
                     <td>{formatDate(record.billingStartDate || record.onboardingDate)}</td>
@@ -916,6 +930,11 @@ export default function Clients() {
                 <label className="input-label">Email</label>
                 <input className="input-field" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="client@example.com" />
               </div>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Website</label>
+              <input className={`input-field${formErrors.website ? ' input-error' : ''}`} value={form.website} onChange={e => { setForm({ ...form, website: e.target.value }); setFormErrors(prev => ({ ...prev, website: '' })); }} placeholder="example.com" />
+              {formErrors.website && <span className="field-error">{formErrors.website}</span>}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="input-group">
@@ -1158,6 +1177,12 @@ export default function Clients() {
               <div className="detail-row">
                 <span className="detail-label">Email</span>
                 <span className="detail-value">{detailRecord.email || '—'}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Website</span>
+                <span className="detail-value">{detailRecord.website ? (
+                  <a href={detailRecord.website.startsWith('http') ? detailRecord.website : `https://${detailRecord.website}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{detailRecord.website}</a>
+                ) : '—'}</span>
               </div>
               <div className="detail-row">
                 <span className="detail-label">Onboarded</span>

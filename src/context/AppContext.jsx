@@ -25,6 +25,7 @@ function createMonthlyRecord(recordData, overrides = {}) {
     contactPerson: recordData.contactPerson || '',
     phone: recordData.phone || '',
     email: recordData.email || '',
+    website: recordData.website || '',
     onboardingDate: recordData.onboardingDate || '',
     billingStartDate: recordData.billingStartDate || recordData.onboardingDate || '',
     monthlyPrice: recordData.monthlyPrice || 0,
@@ -287,7 +288,7 @@ export const AppProvider = ({ children }) => {
 
   const updateRecordInMonth = useCallback((recordId, updates, month = currentMonth, year = currentYear) => {
     const currentKey = `${year}-${month}`;
-    const propagateFields = ['businessName', 'contactPerson', 'phone', 'email', 'monthlyPrice', 'status', 'statusDate', 'statusNote', 'handledBy', 'contractEndDate', 'paymentDueDay', 'paymentMethod', 'notes'];
+    const propagateFields = ['businessName', 'contactPerson', 'phone', 'email', 'website', 'monthlyPrice', 'status', 'statusDate', 'statusNote', 'handledBy', 'contractEndDate', 'paymentDueDay', 'paymentMethod', 'notes'];
     const toPropagate = {};
     for (const field of propagateFields) {
       if (field in updates) toPropagate[field] = updates[field];
