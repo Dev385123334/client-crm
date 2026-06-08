@@ -1,7 +1,7 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
-import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole, getPmNames, PMS } from '../utils/helpers';
+import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole, getPmRole, getPmNames, PMS } from '../utils/helpers';
 import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
 import FilterBar from '../components/FilterBar/FilterBar';
 import NotificationPanel from '../components/NotificationPanel/NotificationPanel';
@@ -23,7 +23,7 @@ export default function Clients() {
     exchangeRate, setExchangeRate, currencyView, setCurrencyView,
     convertToINR, formatUSD, formatINR,
     taxRate, setTaxRate,
-    assignments,
+    assignments, saveAssignments, deleteAssignment,
     logAction
   } = useContext(AppContext);
 
@@ -33,6 +33,7 @@ export default function Clients() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [editRecordId, setEditRecordId] = useState(null);
+  const [formErrors, setFormErrors] = useState({});
   const [sortBy, setSortBy] = useState('onboardingDate');
   const [sortDir, setSortDir] = useState('asc');
   const [filters, setFilters] = useState({ search: '', status: null, dateRange: null, amount: null });
@@ -75,7 +76,7 @@ export default function Clients() {
 
   const baseRole = getBaseRole(userRole);
   const userAssignments = assignments.filter(a => a.assignedPm === userRole);
-  const records = baseRole === 'pm_editor' && userAssignments.length > 0
+  const records = baseRole === 'pm_editor'
     ? currentMonthRecords.filter(r => userAssignments.some(a => a.businessName === r.businessName))
     : currentMonthRecords;
   const activeRecords = records.filter(r => r.status === 'Active');
@@ -226,6 +227,7 @@ export default function Clients() {
       handledBy: 'Unassigned'
     });
     setEditRecordId(null);
+    setFormErrors({});
     setShowAddModal(true);
   };
 
@@ -251,13 +253,24 @@ export default function Clients() {
       handledBy: record.handledBy || 'Unassigned'
     });
     setEditRecordId(record.id);
+    setFormErrors({});
     setShowAddModal(true);
   };
 
-  const saveClient = () => {
-    if (!form.businessName || !form.monthlyPrice || !form.onboardingDate) return;
+  const saveClient = async () => {
+    const errors = {};
+    if (!form.businessName) errors.businessName = 'Business name is required';
+    if (!form.monthlyPrice) errors.monthlyPrice = 'Monthly price is required';
+    if (!form.onboardingDate) errors.onboardingDate = 'Onboarding date is required';
+    if (Object.keys(errors).length) { setFormErrors(errors); return; }
+    setFormErrors({});
     const billingDate = form.billingStartDate || form.onboardingDate;
     const dueDay = new Date(billingDate).getDate();
+
+    const baseRole = getBaseRole(userRole);
+    const pm = PMS.find(p => p.role === userRole);
+    const resolvedHandledBy = baseRole === 'pm_editor' && pm ? pm.name : form.handledBy;
+
     const recordData = {
       businessName: form.businessName,
       contactPerson: form.contactPerson,
@@ -273,7 +286,7 @@ export default function Clients() {
       status: form.status,
       statusDate: form.statusDate,
       statusNote: form.statusNote,
-      handledBy: form.handledBy,
+      handledBy: resolvedHandledBy,
       paymentReceived: parseFloat(form.paymentReceived) || 0,
       refundAmount: parseFloat(form.refundAmount) || 0,
       chargebackAmount: parseFloat(form.chargebackAmount) || 0
@@ -286,7 +299,38 @@ export default function Clients() {
       addRecordToMonth(recordData);
       logAction({ user, actionType: 'client.create', entityType: 'client', entityName: form.businessName, details: { monthlyPrice: recordData.monthlyPrice } });
     }
+
+    syncAssignments(form.businessName, resolvedHandledBy, editRecordId);
     setShowAddModal(false);
+  };
+
+  const syncAssignments = async (businessName, handledBy, editingId) => {
+    const newRole = getPmRole(handledBy);
+    const isPmAssigned = PMS.some(p => p.role === newRole);
+
+    if (editingId) {
+      let oldHandledBy = 'Unassigned';
+      for (const recs of Object.values(monthlyRecords)) {
+        const found = recs.find(r => r.id === editingId);
+        if (found) { oldHandledBy = found.handledBy || 'Unassigned'; break; }
+      }
+      const oldRole = getPmRole(oldHandledBy);
+      const oldIsPm = PMS.some(p => p.role === oldRole);
+
+      if (oldIsPm && oldRole !== newRole) {
+        const toRemove = assignments.filter(a => a.businessName === businessName && a.assignedPm === oldRole);
+        for (const a of toRemove) await deleteAssignment(a.id);
+      }
+    }
+
+    if (isPmAssigned) {
+      const exists = assignments.some(a => a.businessName === businessName && a.assignedPm === newRole);
+      if (!exists) {
+        const newAssign = { id: crypto.randomUUID(), businessName, assignedPm: newRole };
+        await saveAssignments([...assignments, newAssign]);
+        logAction({ user, actionType: 'assignment.create', entityType: 'assignment', entityName: businessName, details: { assignedTo: newRole } });
+      }
+    }
   };
 
   const promptDelete = (record) => {
@@ -377,7 +421,10 @@ export default function Clients() {
     setShowImportModal(false); setImportPreview(null);
   };
 
-  const showAmount = (usd) => currencyView === 'INR' ? formatINR(convertToINR(usd)) : formatUSD(usd);
+  const showAmount = (usd) => {
+    if (usd === undefined || usd === null || isNaN(usd)) return formatUSD(0);
+    return baseRole === 'pm_editor' ? formatINR(convertToINR(usd)) : (currencyView === 'INR' ? formatINR(convertToINR(usd)) : formatUSD(usd));
+  };
   const pctOf = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : '0.0';
 
   const allTrash = getAllTrashRecords();
@@ -538,7 +585,7 @@ export default function Clients() {
                     <span className="breakdown-label">{b.label}</span>
                     <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (counts / activeCount) * 100 : 0}%` }}></div></div>
                   </div>
-                  <span className="breakdown-value">{counts} clients - {formatUSD(revs)}/mo</span>
+                  <span className="breakdown-value">{counts} clients - {showAmount(revs)}/mo</span>
                 </div>
               );
             })}
@@ -553,7 +600,7 @@ export default function Clients() {
               return (
                 <div key={b.key} className="rev-tenure-item">
                   <span className="rev-tenure-label">{b.label}</span>
-                  <span className="rev-tenure-value">{formatUSD(revs)} ({pctOf(revs, totalMRR)}%)</span>
+                  <span className="rev-tenure-value">{showAmount(revs)} ({pctOf(revs, totalMRR)}%)</span>
                 </div>
               );
             })}
@@ -575,14 +622,14 @@ export default function Clients() {
                     <span className="status-row__check">&#10003;</span>
                     <span className="status-row__name">{r.businessName}</span>
                   </div>
-                  <span className="status-row__price">{formatUSD(r.monthlyPrice)}/mo</span>
+                  <span className="status-row__price">{showAmount(r.monthlyPrice)}/mo</span>
                 </div>
               ))}
               {activeRecords.length === 0 && <div className="text-sm text-muted">No active clients.</div>}
             </div>
             <div className="status-column__footer status-column__footer--active">
               <span>{nextMonthName} MRR Forecast:</span>
-              <span>{formatUSD(totalMRR)} ({activeCount} active clients)</span>
+              <span>{showAmount(totalMRR)} ({activeCount} active clients)</span>
             </div>
           </div>
 
@@ -596,7 +643,7 @@ export default function Clients() {
                     <span className="status-row__name status-row__name--cancelled">{r.businessName}</span>
                   </div>
                   <div className="status-row__right">
-                    <span className="status-row__price status-row__price--cancelled">{formatUSD(r.monthlyPrice)}/mo</span>
+                    <span className="status-row__price status-row__price--cancelled">{showAmount(r.monthlyPrice)}/mo</span>
                   </div>
                   {r.statusDate || (r.statusNote && r.statusNote !== 'None') || r.paymentReceived > 0 ? (
                     <div className="status-row__meta">
@@ -611,7 +658,7 @@ export default function Clients() {
             </div>
             <div className="status-column__footer status-column__footer--cancelled">
               <span>Revenue Lost:</span>
-              <span>-{formatUSD(revenueLost)}</span>
+              <span>-{showAmount(revenueLost)}</span>
             </div>
           </div>
         </div>
@@ -723,8 +770,8 @@ export default function Clients() {
                       </span>
                     </td>
                     <td>
-                      <span className="font-semibold">{formatUSD(record.monthlyPrice)}</span>
-                      <span className="text-muted text-xs" style={{ marginLeft: 6 }}>(&asymp;{formatINR(convertToINR(record.monthlyPrice))})</span>
+                      <span className="font-semibold">{showAmount(record.monthlyPrice)}</span>
+                      {baseRole !== 'pm_editor' && <span className="text-muted text-xs" style={{ marginLeft: 6 }}>(&asymp;{formatINR(convertToINR(record.monthlyPrice))})</span>}
                     </td>
                     <td>
                       {ps.hasPayment ? (
@@ -842,12 +889,13 @@ export default function Clients() {
 
       {/* Add/Edit Modal */}
       {showAddModal && (
-        <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
+        <div className="modal-overlay">
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <h2 style={{ marginBottom: 20 }}>{editRecordId ? 'Edit Client' : 'Add New Client'}</h2>
             <div className="input-group">
               <label className="input-label">Business Name *</label>
-              <input className="input-field" value={form.businessName} onChange={e => setForm({ ...form, businessName: e.target.value })} />
+              <input className={`input-field${formErrors.businessName ? ' input-error' : ''}`} value={form.businessName} onChange={e => { setForm({ ...form, businessName: e.target.value }); setFormErrors(prev => ({ ...prev, businessName: '' })); }} />
+              {formErrors.businessName && <span className="field-error">{formErrors.businessName}</span>}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="input-group">
@@ -866,7 +914,8 @@ export default function Clients() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="input-group">
                 <label className="input-label">Monthly Price (USD) *</label>
-                <input className="input-field" type="number" value={form.monthlyPrice} onChange={e => setForm({ ...form, monthlyPrice: e.target.value })} />
+                <input className={`input-field${formErrors.monthlyPrice ? ' input-error' : ''}`} type="number" value={form.monthlyPrice} onChange={e => { setForm({ ...form, monthlyPrice: e.target.value }); setFormErrors(prev => ({ ...prev, monthlyPrice: '' })); }} />
+                {formErrors.monthlyPrice && <span className="field-error">{formErrors.monthlyPrice}</span>}
               </div>
               <div className="input-group">
                 <label className="input-label">Status</label>
@@ -918,7 +967,8 @@ export default function Clients() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="input-group">
                 <label className="input-label">Onboarding Date *</label>
-                <input className="input-field" type="date" value={form.onboardingDate} onChange={e => setForm({ ...form, onboardingDate: e.target.value })} />
+                <input className={`input-field${formErrors.onboardingDate ? ' input-error' : ''}`} type="date" value={form.onboardingDate} onChange={e => { setForm({ ...form, onboardingDate: e.target.value }); setFormErrors(prev => ({ ...prev, onboardingDate: '' })); }} />
+                {formErrors.onboardingDate && <span className="field-error">{formErrors.onboardingDate}</span>}
               </div>
               <div className="input-group">
                 <label className="input-label">Billing Start Date</label>

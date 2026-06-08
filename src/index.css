@@ -169,6 +169,17 @@ select.input-field {
   padding-right: 32px;
 }
 
+.input-error {
+  border-color: var(--danger) !important;
+}
+
+.field-error {
+  display: block;
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 /* ── Tables ── */
 .table-container {
   width: 100%;

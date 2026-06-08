@@ -20,7 +20,7 @@ export default function ClientPM() {
         const key = r.businessName + '|' + (r.onboardingDate || '');
         if (!seen.has(key)) {
           seen.add(key);
-          clients.push({ businessName: r.businessName, onboardingDate: r.onboardingDate || '' });
+          clients.push({ businessName: r.businessName, onboardingDate: r.onboardingDate || '', handledBy: r.handledBy || '' });
         }
       }
     }
@@ -81,7 +81,11 @@ export default function ClientPM() {
                 </div>
                 <div className="assignments-col-pms">
                   {clientAssigns.length === 0 ? (
-                    <span className="text-muted" style={{ fontSize: 13 }}>Not assigned</span>
+                    client.handledBy && client.handledBy !== 'Unassigned' ? (
+                      <span className="pm-tag" style={{ opacity: 0.7 }}>{client.handledBy}</span>
+                    ) : (
+                      <span className="text-muted" style={{ fontSize: 13 }}>Not assigned</span>
+                    )
                   ) : (
                     <div className="pm-tags">
                       {clientAssigns.map(a => (
