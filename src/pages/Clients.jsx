@@ -213,7 +213,7 @@ export default function Clients() {
     monthlyPrice: '', onboardingDate: '', billingStartDate: '',
     status: 'Active', statusDate: '', statusNote: 'None',
     contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
-    paymentReceived: '', refundAmount: '', chargebackAmount: '',
+    paymentReceived: '', upsell: '', downsell: '',
     handledBy: 'Unassigned'
   });
 
@@ -223,7 +223,7 @@ export default function Clients() {
       monthlyPrice: '', onboardingDate: '', billingStartDate: '',
       status: 'Active', statusDate: '', statusNote: 'None',
       contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
-      paymentReceived: '', refundAmount: '', chargebackAmount: '',
+      paymentReceived: '', upsell: '', downsell: '',
       handledBy: 'Unassigned'
     });
     setEditRecordId(null);
@@ -248,8 +248,8 @@ export default function Clients() {
       paymentMethod: record.paymentMethod || 'Stripe',
       notes: record.notes || '',
       paymentReceived: record.paymentReceived || '',
-      refundAmount: record.refundAmount || '',
-      chargebackAmount: record.chargebackAmount || '',
+      upsell: '',
+      downsell: '',
       handledBy: record.handledBy || 'Unassigned'
     });
     setEditRecordId(record.id);
@@ -271,12 +271,17 @@ export default function Clients() {
     const pm = PMS.find(p => p.role === userRole);
     const resolvedHandledBy = baseRole === 'pm_editor' && pm ? pm.name : form.handledBy;
 
+    const upsellAmt = parseFloat(form.upsell) || 0;
+    const downsellAmt = parseFloat(form.downsell) || 0;
+    const basePrice = parseFloat(form.monthlyPrice) || 0;
+    const adjustedPrice = basePrice + upsellAmt - downsellAmt;
+
     const recordData = {
       businessName: form.businessName,
       contactPerson: form.contactPerson,
       phone: form.phone,
       email: form.email,
-      monthlyPrice: parseFloat(form.monthlyPrice),
+      monthlyPrice: adjustedPrice,
       onboardingDate: form.onboardingDate,
       billingStartDate: form.billingStartDate || form.onboardingDate,
       contractEndDate: form.contractEndDate,
@@ -288,8 +293,8 @@ export default function Clients() {
       statusNote: form.statusNote,
       handledBy: resolvedHandledBy,
       paymentReceived: parseFloat(form.paymentReceived) || 0,
-      refundAmount: parseFloat(form.refundAmount) || 0,
-      chargebackAmount: parseFloat(form.chargebackAmount) || 0
+      refundAmount: 0,
+      chargebackAmount: 0
     };
 
     if (editRecordId) {
@@ -423,8 +428,9 @@ export default function Clients() {
 
   const showAmount = (usd) => {
     if (usd === undefined || usd === null || isNaN(usd)) return formatUSD(0);
-    return baseRole === 'pm_editor' ? formatINR(convertToINR(usd)) : (currencyView === 'INR' ? formatINR(convertToINR(usd)) : formatUSD(usd));
+    return formatUSD(usd);
   };
+  const showDual = (usd) => `${formatUSD(usd)} / ${formatINR(convertToINR(usd))}`;
   const pctOf = (val, total) => total > 0 ? ((val / total) * 100).toFixed(1) : '0.0';
 
   const allTrash = getAllTrashRecords();
@@ -497,7 +503,7 @@ export default function Clients() {
       <NotificationPanel />
 
       {/* Config Bar */}
-      <div className="config-bar">
+      {baseRole !== 'pm_editor' && <div className="config-bar">
         <div className="config-bar__item">
           <span className="config-bar__label">1 USD = ₹</span>
           <input
@@ -528,7 +534,7 @@ export default function Clients() {
           />
           <span className="config-bar__label">%</span>
         </div>
-      </div>
+      </div>}
 
       {/* Stats Row */}
       <div className="stats-row">
@@ -540,24 +546,24 @@ export default function Clients() {
           <div className="stat-label" style={{ color: 'var(--success)' }}>Cash Received This Month</div>
           {taxRate > 0 ? (
             <>
-              <div className="stat-value">{formatUSD(cashReceivedAfterTax)} / {formatINR(convertToINR(cashReceivedAfterTax))}</div>
-              <div className="stat-sub">After {taxRate}% tax deduction (gross: {formatUSD(cashReceived)})</div>
+              <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(cashReceivedAfterTax) : showDual(cashReceivedAfterTax)}</div>
+              <div className="stat-sub">After {taxRate}% tax deduction (gross: {baseRole === 'pm_editor' ? showAmount(cashReceived) : showDual(cashReceived)})</div>
             </>
           ) : (
             <>
-              <div className="stat-value">{formatUSD(cashReceived)} / {formatINR(convertToINR(cashReceived))}</div>
+              <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(cashReceived) : showDual(cashReceived)}</div>
               <div className="stat-sub">Net after refunds/chargebacks</div>
             </>
           )}
         </div>
         <div className="card stat-card" style={{ background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
           <div className="stat-label" style={{ color: 'var(--info)' }}>Current Month MRR</div>
-          <div className="stat-value">{formatUSD(totalMRR)} / {formatINR(convertToINR(totalMRR))}</div>
+          <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(totalMRR) : showDual(totalMRR)}</div>
           <div className="stat-sub">From active clients only</div>
         </div>
         <div className="card stat-card">
           <div className="stat-label">Average Client Value</div>
-          <div className="stat-value">{formatUSD(avgClientValue)} / {formatINR(convertToINR(avgClientValue))}</div>
+          <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(avgClientValue) : showDual(avgClientValue)}</div>
         </div>
         <div className="card stat-card">
           <div className="stat-label">Oldest Client</div>
@@ -585,7 +591,7 @@ export default function Clients() {
                     <span className="breakdown-label">{b.label}</span>
                     <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (counts / activeCount) * 100 : 0}%` }}></div></div>
                   </div>
-                  <span className="breakdown-value">{counts} clients - {showAmount(revs)}/mo</span>
+                  <span className="breakdown-value">{counts} clients - {formatUSD(revs)}/mo</span>
                 </div>
               );
             })}
@@ -600,7 +606,7 @@ export default function Clients() {
               return (
                 <div key={b.key} className="rev-tenure-item">
                   <span className="rev-tenure-label">{b.label}</span>
-                  <span className="rev-tenure-value">{showAmount(revs)} ({pctOf(revs, totalMRR)}%)</span>
+                  <span className="rev-tenure-value">{formatUSD(revs)} ({pctOf(revs, totalMRR)}%)</span>
                 </div>
               );
             })}
@@ -622,14 +628,14 @@ export default function Clients() {
                     <span className="status-row__check">&#10003;</span>
                     <span className="status-row__name">{r.businessName}</span>
                   </div>
-                  <span className="status-row__price">{showAmount(r.monthlyPrice)}/mo</span>
+                  <span className="status-row__price">{formatUSD(r.monthlyPrice)}/mo</span>
                 </div>
               ))}
               {activeRecords.length === 0 && <div className="text-sm text-muted">No active clients.</div>}
             </div>
             <div className="status-column__footer status-column__footer--active">
               <span>{nextMonthName} MRR Forecast:</span>
-              <span>{showAmount(totalMRR)} ({activeCount} active clients)</span>
+              <span>{formatUSD(totalMRR)} ({activeCount} active clients)</span>
             </div>
           </div>
 
@@ -643,7 +649,7 @@ export default function Clients() {
                     <span className="status-row__name status-row__name--cancelled">{r.businessName}</span>
                   </div>
                   <div className="status-row__right">
-                    <span className="status-row__price status-row__price--cancelled">{showAmount(r.monthlyPrice)}/mo</span>
+                    <span className="status-row__price status-row__price--cancelled">{formatUSD(r.monthlyPrice)}/mo</span>
                   </div>
                   {r.statusDate || (r.statusNote && r.statusNote !== 'None') || r.paymentReceived > 0 ? (
                     <div className="status-row__meta">
@@ -658,7 +664,7 @@ export default function Clients() {
             </div>
             <div className="status-column__footer status-column__footer--cancelled">
               <span>Revenue Lost:</span>
-              <span>-{showAmount(revenueLost)}</span>
+              <span>-{formatUSD(revenueLost)}</span>
             </div>
           </div>
         </div>
@@ -770,8 +776,8 @@ export default function Clients() {
                       </span>
                     </td>
                     <td>
-                      <span className="font-semibold">{showAmount(record.monthlyPrice)}</span>
-                      {baseRole !== 'pm_editor' && <span className="text-muted text-xs" style={{ marginLeft: 6 }}>(&asymp;{formatINR(convertToINR(record.monthlyPrice))})</span>}
+                      <span className="font-semibold">{formatUSD(record.monthlyPrice)}</span>
+                      <span className="text-muted text-xs" style={{ marginLeft: 6 }}>(&asymp;{formatINR(convertToINR(record.monthlyPrice))})</span>
                     </td>
                     <td>
                       {ps.hasPayment ? (
@@ -949,17 +955,17 @@ export default function Clients() {
                   <input className="input-field" type="number" placeholder="0" value={form.paymentReceived} onChange={e => setForm({ ...form, paymentReceived: e.target.value })} />
                 </div>
                 <div className="input-group mb-0">
-                  <label className="input-label">Refund Amount ($)</label>
-                  <input className="input-field" type="number" placeholder="0" value={form.refundAmount} onChange={e => setForm({ ...form, refundAmount: e.target.value })} />
+                  <label className="input-label">Upsell ($)</label>
+                  <input className="input-field" type="number" placeholder="0" value={form.upsell} onChange={e => setForm({ ...form, upsell: e.target.value })} />
                 </div>
                 <div className="input-group mb-0">
-                  <label className="input-label">Chargeback Amount ($)</label>
-                  <input className="input-field" type="number" placeholder="0" value={form.chargebackAmount} onChange={e => setForm({ ...form, chargebackAmount: e.target.value })} />
+                  <label className="input-label">Downsell ($)</label>
+                  <input className="input-field" type="number" placeholder="0" value={form.downsell} onChange={e => setForm({ ...form, downsell: e.target.value })} />
                 </div>
               </div>
               <div className="mt-3 text-right text-sm">
                 <span className="font-semibold text-heading">
-                  Net Receipt: {formatUSD((parseFloat(form.paymentReceived) || 0) - (parseFloat(form.refundAmount) || 0) - (parseFloat(form.chargebackAmount) || 0))}
+                  Net Receipt: {formatUSD(parseFloat(form.paymentReceived) || 0)}
                 </span>
               </div>
             </div>

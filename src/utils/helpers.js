@@ -36,7 +36,7 @@ export function calculateTenure(onboardingDate, currentMonth, currentYear) {
     return { text: '⚠️ Future date', months: 0, isFuture: true };
   }
 
-  const tenureMonths = ((curYear - year) * 12) + (curMonth - month) + 1;
+  const tenureMonths = ((curYear - year) * 12) + (curMonth - month);
   const finalMonths = Math.max(1, tenureMonths);
 
   return { text: `${finalMonths} months`, months: finalMonths };
