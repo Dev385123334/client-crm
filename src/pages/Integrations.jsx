@@ -37,7 +37,11 @@ export default function Integrations() {
   const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor';
   const canSeeExpense = baseRole === 'admin' || baseRole === 'hr_editor';
 
-  const [clientSheet, setClientSheet] = useState(() => loadFromLS('profitpilot_clientSheet', { url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' }));
+  const [clientSheet, setClientSheet] = useState(() => {
+    const saved = loadFromLS('profitpilot_clientSheet', null);
+    const defaults = { url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
+    return saved ? { ...defaults, ...saved } : defaults;
+  });
   const [expenseSheet, setExpenseSheet] = useState(() => {
     const saved = loadFromLS('profitpilot_expenseSheet', null);
     const defaults = { url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
@@ -200,62 +204,94 @@ export default function Integrations() {
         return;
       }
 
+      const sheetInfo = parseSheetUrl(sheet.url);
+      if (!sheetInfo) {
+        addLog(label, 'Could not extract sheet ID from URL', 'error');
+        return;
+      }
+
+      if (!VITE_GOOGLE_SHEETS_API_KEY) {
+        addLog(label, 'VITE_GOOGLE_SHEETS_API_KEY is not set in environment. Add it to .env and restart.', 'error');
+        return;
+      }
+
       setSheet(prev => ({ ...prev, syncing: true, status: 'syncing', error: '' }));
+      setSyncProgress('');
 
       try {
-        const res = await fetch(csvUrl);
+        setSyncProgress('Detecting sheet tabs...');
+        const tabs = await fetchSheetTabs(sheetInfo.id, VITE_GOOGLE_SHEETS_API_KEY);
+        const monthTabs = [];
+        for (const tab of tabs) {
+          const parsed = parseTabName(tab.title);
+          if (parsed) monthTabs.push({ ...tab, parsed });
+        }
 
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Sheet is private. Publish it: File → Share → Publish to web → CSV');
+        if (monthTabs.length === 0) {
+          throw new Error(`No tabs found matching "Month YYYY" format. Found tabs: ${tabs.map(t => t.title).join(', ') || 'none'}`);
+        }
+
+        let totalImported = 0, totalSkipped = 0;
+        const tabResults = [];
+
+        for (const monthTab of monthTabs) {
+          setSyncProgress(`Syncing ${monthTab.title}...`);
+          const tabUrl = resolveSheetUrl(sheet.url, monthTab.gid);
+          if (!tabUrl) continue;
+
+          const res = await fetch(tabUrl);
+          if (!res.ok) {
+            tabResults.push(`${monthTab.title}: HTTP ${res.status}`);
+            continue;
           }
-          throw new Error(`HTTP ${res.status}: Could not access sheet`);
-        }
 
-        const text = await res.text();
+          const text = await res.text();
+          if (/<html|<head|<body/i.test(text)) {
+            tabResults.push(`${monthTab.title}: Private sheet`);
+            continue;
+          }
 
-        if (/<html|<head|<body/i.test(text)) {
-          throw new Error('Received HTML instead of CSV. Publish the sheet: File → Share → Publish to web → CSV');
-        }
+          const parsed = Papa.parse(text, { header: false, skipEmptyLines: true });
+          if (parsed.data.length < 2) {
+            tabResults.push(`${monthTab.title}: Empty`);
+            continue;
+          }
 
-        const parsed = Papa.parse(text, { header: false, skipEmptyLines: true });
+          let imported = 0, skipped = 0;
+          const startRow = parseGoogleSheetDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
+          for (let i = startRow; i < parsed.data.length; i++) {
+            const row = parsed.data[i];
+            const dateRaw = String(row[0] || '').trim();
+            const priceRaw = String(row[1] || '').trim();
+            const name = String(row[2] || '').trim();
+            const clientName = String(row[3] || '').trim();
+            const phone = String(row[4] || '').trim();
+            const email = String(row[5] || '').trim();
 
-        if (parsed.data.length < 2) {
-          const preview = text.slice(0, 200).replace(/\n/g, '↵');
-          throw new Error(`Sheet appears empty (${parsed.data.length} row${parsed.data.length === 1 ? '' : 's'}). First 200 chars: "${preview}"`);
-        }
+            if (!name || !dateRaw || !priceRaw) { skipped++; continue; }
 
-        let imported = 0, skipped = 0;
-        const startRow = parseGoogleSheetDate(String(parsed.data[0]?.[0] || '')) ? 0 : 1;
-        for (let i = startRow; i < parsed.data.length; i++) {
-          const row = parsed.data[i];
-          const dateRaw = String(row[0] || '').trim();
-          const priceRaw = String(row[1] || '').trim();
-          const name = String(row[2] || '').trim();
-          const clientName = String(row[3] || '').trim();
-          const phone = String(row[4] || '').trim();
-          const email = String(row[5] || '').trim();
+            const isoDate = parseGoogleSheetDate(dateRaw);
+            if (!isoDate) { skipped++; continue; }
 
-          if (!name || !dateRaw || !priceRaw) { skipped++; continue; }
+            const price = parseUSDAmount(priceRaw);
+            if (!price) { skipped++; continue; }
 
-          const isoDate = parseGoogleSheetDate(dateRaw);
-          if (!isoDate) { skipped++; continue; }
-
-          const price = parseUSDAmount(priceRaw);
-          if (!price) { skipped++; continue; }
-
-          addRecordToMonth({
-            businessName: name,
-            contactPerson: clientName,
-            phone,
-            email,
-            monthlyPrice: price,
-            onboardingDate: isoDate,
-            paymentDueDay: new Date(isoDate).getDate(),
-            paymentMethod: 'Stripe',
-            status: 'Active'
-          });
-          imported++;
+            addRecordToMonth({
+              businessName: name,
+              contactPerson: clientName,
+              phone,
+              email,
+              monthlyPrice: price,
+              onboardingDate: isoDate,
+              paymentDueDay: new Date(isoDate).getDate(),
+              paymentMethod: 'Stripe',
+              status: 'Active'
+            }, monthTab.parsed.month, monthTab.parsed.year);
+            imported++;
+          }
+          tabResults.push(`${monthTab.title}: ${imported} imported, ${skipped} skipped`);
+          totalImported += imported;
+          totalSkipped += skipped;
         }
 
         await new Promise(r => setTimeout(r, 800));
@@ -266,15 +302,21 @@ export default function Integrations() {
           throw new Error(`Data was parsed but failed to save to database: ${saveErr.message}`, { cause: saveErr });
         }
 
-        addLog(label, `Synced ${imported} clients (${skipped} rows skipped)`, 'success');
-
         setSheet(prev => ({
           ...prev,
           syncing: false,
           status: 'active',
           lastSync: new Date().toLocaleString(),
+          foundTabs: monthTabs.map(t => t.title),
           error: ''
         }));
+
+        const detail = tabResults.join(' | ');
+        addLog(label, totalImported > 0
+          ? `Synced ${totalImported} clients across ${monthTabs.length} month(s). ${detail}`
+          : `No new clients. ${detail}`, totalImported > 0 ? 'success' : 'info');
+        setSyncProgress('');
+
       } catch (err) {
         addLog(label, `Sync failed: ${err.message}`, 'error');
         setSheet(prev => ({
@@ -284,6 +326,7 @@ export default function Integrations() {
           lastSync: new Date().toLocaleString(),
           error: err.message
         }));
+        setSyncProgress('');
       }
     }
   }
@@ -292,7 +335,7 @@ export default function Integrations() {
     const setSheet = type === 'client' ? setClientSheet : setExpenseSheet;
     const label = type === 'client' ? 'Client Sheet' : 'Expense Sheet';
     if (type === 'client') {
-      setSheet({ url: '', tab: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '' });
+      setSheet({ url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] });
     } else {
       setSheet({ url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] });
     }
@@ -341,9 +384,20 @@ export default function Integrations() {
                 <Clock size={14} />
                 <span>Last synced: {clientSheet.lastSync || 'Never'}</span>
               </div>
-              {clientSheet.tab && (
+              {syncProgress && (
                 <div className="info-row">
-                  <span className="text-sm text-muted">Tab: {clientSheet.tab}</span>
+                  <RefreshCw size={14} className="spin" />
+                  <span className="text-sm">{syncProgress}</span>
+                </div>
+              )}
+              {(clientSheet.foundTabs || []).length > 0 && (
+                <div className="info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                  <span className="text-sm text-muted">Found {(clientSheet.foundTabs || []).length} month tab(s):</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {clientSheet.foundTabs.map((tab, i) => (
+                      <span key={i} className="badge badge-success" style={{ fontSize: '0.7rem' }}>{tab}</span>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="info-row">
@@ -451,7 +505,7 @@ export default function Integrations() {
           </select>
         </div>
         <p className="text-muted text-sm" style={{ marginTop: '0.5rem', fontSize: 12 }}>
-          Tip: For Expense Sheet, name tabs as <code>Month YYYY</code> (e.g. <code>January 2025</code>) for auto-detection.
+          Tip: Name tabs as <code>Month YYYY</code> (e.g. <code>January 2025</code>) for auto-detection on both Client and Expense sheets.
         </p>
       </div>
 
@@ -500,36 +554,23 @@ export default function Integrations() {
                 />
               </div>
 
-              {setupStep === 'client' && (
-                <>
-                  <div className="setup-step">
-                    <span className="step-number">2</span>
-                    <span>Select sheet tab name</span>
-                  </div>
-                  <div className="input-group">
-                    <input
-                      className="input-field"
-                      placeholder="e.g., Sheet1"
-                      value={clientSheet.tab}
-                      onChange={e => setClientSheet(prev => ({ ...prev, tab: e.target.value }))}
-                    />
-                  </div>
-                </>
-              )}
-
               <div className="setup-step">
-                <span className="step-number">{setupStep === 'client' ? '3' : '2'}</span>
+                <span className="step-number">2</span>
                 <span>Expected column order (A to F)</span>
               </div>
               <div className="column-map glass-panel" style={{ padding: '0.75rem', fontSize: 13 }}>
                 {setupStep === 'client' ? (
                   <>
-                    <p><b>A</b>: Month (<code>D/MonthName/YYYY</code>)</p>
+                    <p><b>A</b>: Date (<code>D/MonthName/YYYY</code>)</p>
                     <p><b>B</b>: Value (price in USD)</p>
                     <p><b>C</b>: Business Name</p>
                     <p><b>D</b>: Client Name</p>
                     <p><b>E</b>: Contact No.</p>
                     <p><b>F</b>: Email</p>
+                    <p className="text-muted" style={{ marginTop: 6, fontSize: 11 }}>
+                      Tab names must follow <code>Month YYYY</code> format (e.g. <code>January 2025</code>).
+                      All matching tabs will be detected and synced automatically.
+                    </p>
                   </>
                 ) : (
                   <>
@@ -554,6 +595,14 @@ export default function Integrations() {
                     <br />2. Change to <b>"Anyone with the link"</b> → <b>"Viewer"</b>
                     <br />3. Also go to <b>File → Share → Publish to web</b> → <b>"Entire document"</b> → <b>Publish</b>
                     <br />4. Then click Enable Sync again
+                  </p>
+                </div>
+              )}
+              {setupStep === 'client' && !VITE_GOOGLE_SHEETS_API_KEY && (
+                <div style={{ color: 'var(--warning)', fontSize: 13, marginTop: '0.75rem', padding: '0.5rem', background: 'rgba(255,165,0,0.08)', borderRadius: 6 }}>
+                  <p style={{ fontWeight: 600, marginBottom: 4 }}>API Key Missing</p>
+                  <p style={{ fontSize: 11, opacity: 0.8 }}>
+                    Set <code>VITE_GOOGLE_SHEETS_API_KEY</code> in your <code>.env</code> file and restart the server.
                   </p>
                 </div>
               )}
@@ -596,11 +645,27 @@ export default function Integrations() {
                     doSync('expense');
                   }
                 } else {
-                  setSheet(prev => ({ ...prev, connected: true, status: 'active' }));
-                  setSetupStep(null);
-                  setSetupError('');
-                  addLog('Client Sheet', 'Sheet connected. Click Sync Now to fetch data.', 'success');
-                  doSync('client');
+                  if (!VITE_GOOGLE_SHEETS_API_KEY) return;
+                  const sheetInfo = parseSheetUrl(sheet.url);
+                  if (sheetInfo) {
+                    try {
+                      const tabs = await fetchSheetTabs(sheetInfo.id, VITE_GOOGLE_SHEETS_API_KEY);
+                      const monthTabs = tabs.filter(t => parseTabName(t.title)).map(t => t.title);
+                      setSheet(prev => ({ ...prev, connected: true, status: 'active', foundTabs: monthTabs }));
+                      setSetupStep(null);
+                      setSetupError('');
+                      addLog('Client Sheet', `Connected. Found ${monthTabs.length} month tab(s): ${monthTabs.join(', ') || 'none'}`, 'success');
+                      doSync('client');
+                    } catch (err) {
+                      setSetupError(err.message);
+                    }
+                  } else {
+                    setSheet(prev => ({ ...prev, connected: true, status: 'active' }));
+                    setSetupStep(null);
+                    setSetupError('');
+                    addLog('Client Sheet', 'Sheet connected. Click Sync Now to fetch data.', 'success');
+                    doSync('client');
+                  }
                 }
               }}>
                 <Link2 size={16} /> Enable Sync

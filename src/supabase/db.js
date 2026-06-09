@@ -22,6 +22,8 @@ function mapRecordToDB(rec) {
     payment_received: rec.paymentReceived || 0,
     refund_amount: rec.refundAmount || 0,
     chargeback_amount: rec.chargebackAmount || 0,
+    upsell_amount: rec.upsellAmount || 0,
+    downsell_amount: rec.downsellAmount || 0,
     is_deleted: rec.isDeleted || false,
     deleted_at: rec.deletedAt || null,
     deleted_reason: rec.deletedReason || ''
@@ -48,6 +50,8 @@ function mapDBToRecord(row) {
     paymentReceived: Number(row.payment_received) || 0,
     refundAmount: Number(row.refund_amount) || 0,
     chargebackAmount: Number(row.chargeback_amount) || 0,
+    upsellAmount: Number(row.upsell_amount) || 0,
+    downsellAmount: Number(row.downsell_amount) || 0,
     isDeleted: row.is_deleted || false,
     deletedAt: row.deleted_at || null,
     deletedReason: row.deleted_reason || '',

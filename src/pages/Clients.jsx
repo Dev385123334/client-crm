@@ -84,6 +84,8 @@ export default function Clients() {
 
   const activeCount = activeRecords.length;
   const totalMRR = activeRecords.reduce((s, r) => s + r.monthlyPrice, 0);
+  const upsellMRR = activeRecords.reduce((s, r) => s + (r.upsellAmount || 0), 0);
+  const downsellMRR = activeRecords.reduce((s, r) => s + (r.downsellAmount || 0), 0);
   const avgClientValue = activeCount > 0 ? totalMRR / activeCount : 0;
   const revenueLost = cancelledRecords.reduce((s, r) => s + r.monthlyPrice, 0);
 
@@ -300,7 +302,9 @@ export default function Clients() {
       handledBy: resolvedHandledBy,
       paymentReceived: parseFloat(form.paymentReceived) || 0,
       refundAmount: 0,
-      chargebackAmount: 0
+      chargebackAmount: 0,
+      upsellAmount: upsellAmt,
+      downsellAmount: downsellAmt
     };
 
     if (editRecordId) {
@@ -567,6 +571,19 @@ export default function Clients() {
           <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(totalMRR) : showDual(totalMRR)}</div>
           <div className="stat-sub">From active clients only</div>
         </div>
+        <div className="card stat-card" style={{ background: upsellMRR || downsellMRR ? 'var(--warning-bg)' : 'transparent', borderColor: upsellMRR || downsellMRR ? 'var(--warning)' : 'var(--border)' }}>
+          <div className="stat-label" style={{ color: 'var(--warning)' }}>Upsell / Downsell MRR</div>
+          <div className="flex items-center gap-3" style={{ marginTop: 4 }}>
+            <span style={{ color: 'var(--success)', fontWeight: 700, fontSize: 18 }}>
+              {upsellMRR > 0 ? `+${formatUSD(upsellMRR)}` : formatUSD(0)}
+            </span>
+            <span style={{ color: 'var(--muted)', fontSize: 13 }}>/</span>
+            <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 18 }}>
+              {downsellMRR > 0 ? `-${formatUSD(downsellMRR)}` : formatUSD(0)}
+            </span>
+          </div>
+          <div className="stat-sub">Upsell ← → Downsell</div>
+        </div>
         <div className="card stat-card">
           <div className="stat-label">Average Client Value</div>
           <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(avgClientValue) : showDual(avgClientValue)}</div>
@@ -792,6 +809,26 @@ export default function Clients() {
                     <td>
                       <span className="font-semibold">{formatUSD(record.monthlyPrice)}</span>
                       <span className="text-muted text-xs" style={{ marginLeft: 6 }}>(&asymp;{formatINR(convertToINR(record.monthlyPrice))})</span>
+                      {(record.upsellAmount > 0 || record.downsellAmount > 0) && (
+                        <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
+                          {record.upsellAmount > 0 && (
+                            <span className="text-xs" style={{ color: 'var(--success)', fontWeight: 600 }}>
+                              +{formatUSD(record.upsellAmount)}
+                              <span className="text-muted" style={{ fontWeight: 400 }}>
+                                {' '}({formatUSD(record.monthlyPrice - record.upsellAmount + record.downsellAmount)})
+                              </span>
+                            </span>
+                          )}
+                          {record.downsellAmount > 0 && (
+                            <span className="text-xs" style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                              -{formatUSD(record.downsellAmount)}
+                              <span className="text-muted" style={{ fontWeight: 400 }}>
+                                {' '}({formatUSD(record.monthlyPrice + record.downsellAmount - record.upsellAmount)})
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td>
                       {ps.hasPayment ? (

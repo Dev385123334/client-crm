@@ -40,6 +40,8 @@ function createMonthlyRecord(recordData, overrides = {}) {
     paymentReceived: recordData.paymentReceived || 0,
     refundAmount: recordData.refundAmount || 0,
     chargebackAmount: recordData.chargebackAmount || 0,
+    upsellAmount: recordData.upsellAmount || 0,
+    downsellAmount: recordData.downsellAmount || 0,
     isDeleted: recordData.isDeleted || false,
     deletedAt: recordData.deletedAt || null,
     deletedReason: recordData.deletedReason || '',
@@ -391,6 +393,8 @@ export const AppProvider = ({ children }) => {
           paymentReceived: 0,
           refundAmount: 0,
           chargebackAmount: 0,
+          upsellAmount: 0,
+          downsellAmount: 0,
           isDeleted: false,
           deletedAt: null,
           deletedReason: ''
