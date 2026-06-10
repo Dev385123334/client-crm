@@ -21,7 +21,9 @@ export function resolveSheetUrl(url, gid) {
   if (/\/export\?/.test(url) && gid == null) return url;
   const info = parseSheetUrl(url);
   if (!info) return null;
-  return `https://docs.google.com/spreadsheets/d/${info.id}/export?format=csv`;
+  let exportUrl = `https://docs.google.com/spreadsheets/d/${info.id}/export?format=csv`;
+  if (gid != null) exportUrl += `&gid=${gid}`;
+  return exportUrl;
 }
 
 export async function fetchSheetTabs(spreadsheetId, apiKey) {

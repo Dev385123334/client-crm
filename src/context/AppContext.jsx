@@ -224,10 +224,9 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
+    localStorage.setItem('profitpilot_team', JSON.stringify(team));
     if (isSupabaseConfigured()) {
-      saveTeam(team);
-    } else {
-      localStorage.setItem('profitpilot_team', JSON.stringify(team));
+      saveTeam(team).catch(err => console.error('Failed to save team to DB:', err.message));
     }
   }, [dataReady, team]);
 
