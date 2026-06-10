@@ -83,6 +83,16 @@ $$;
 
 create index if not exists idx_expenses_month_year on expenses(month, year);
 
+alter table expenses enable row level security;
+
+drop policy if exists "authenticated_all" on expenses;
+create policy "authenticated_all"
+  on expenses
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
 -- 5. Team members table
 create table if not exists team_members (
   id uuid default gen_random_uuid() primary key,
