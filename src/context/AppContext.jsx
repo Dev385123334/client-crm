@@ -109,6 +109,8 @@ export const AppProvider = ({ children }) => {
   const monthlyRecordsRef = useRef(monthlyRecords);
   useEffect(() => { monthlyRecordsRef.current = monthlyRecords; }, [monthlyRecords]);
   const [expenses, setExpenses] = useState(() => loadFromLS('profitpilot_expenses', []));
+  const expensesRef = useRef(expenses);
+  useEffect(() => { expensesRef.current = expenses; }, [expenses]);
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
   const [taxRate, setTaxRate] = useState(() => loadFromLS('profitpilot_taxRate', 0));
@@ -158,55 +160,59 @@ export const AppProvider = ({ children }) => {
     if (!user) return;
 
     async function loadSupabaseData() {
-      const [settings, records, exp, tm, logs, asgn] = await Promise.all([
-        loadSettings(),
-        loadMonthlyRecords(),
-        loadExpenses(),
-        loadTeam(),
-        loadSyncLogs(),
-        loadClientPmAssignments()
-      ]);
+      try {
+        const [settings, records, exp, tm, logs, asgn] = await Promise.all([
+          loadSettings(),
+          loadMonthlyRecords(),
+          loadExpenses(),
+          loadTeam(),
+          loadSyncLogs(),
+          loadClientPmAssignments()
+        ]);
 
-      if (settings) {
-        setExchangeRate(settings.exchangeRate);
-        setProfitGoal(settings.profitGoal);
-        setCurrencyView(settings.currencyView);
-        if (settings.taxRate !== undefined) setTaxRate(settings.taxRate);
-      }
-
-      const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
-      const localHasRecords = localRecords && Object.keys(localRecords).length > 0;
-
-      const supabaseHasRecords = records && Object.keys(records).length > 0;
-
-      if (supabaseHasRecords) {
-        setMonthlyRecords(cleanupExpiredTrash(records));
-      } else if (!localHasRecords) {
-        const migrated = await migrateFromLocalStorage();
-        if (migrated) {
-          const r2 = await loadMonthlyRecords();
-          if (r2) setMonthlyRecords(cleanupExpiredTrash(r2));
+        if (settings) {
+          setExchangeRate(settings.exchangeRate);
+          setProfitGoal(settings.profitGoal);
+          setCurrencyView(settings.currencyView);
+          if (settings.taxRate !== undefined) setTaxRate(settings.taxRate);
         }
-      }
 
-      const localExpenses = loadFromLS('profitpilot_expenses', null);
-      if (exp && exp.length > 0) {
-        setExpenses(exp);
-        localStorage.setItem('profitpilot_expenses', JSON.stringify(exp));
-      } else if (localExpenses && localExpenses.length > 0) {
-        setExpenses(localExpenses);
-      }
-      if (tm && tm.length > 0) setTeam(tm);
-      if (logs) setSyncLogs(logs);
-      if (asgn) setAssignments(asgn);
+        const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
+        const localHasRecords = localRecords && Object.keys(localRecords).length > 0;
 
-      const auditData = await loadAuditLogs();
-      if (auditData) setAuditLogs(auditData);
+        const supabaseHasRecords = records && Object.keys(records).length > 0;
 
-      const sheets = await loadSheetConnections(user.id);
-      if (sheets) {
-        if (sheets.client) setClientSheet(prev => ({ ...prev, ...sheets.client }));
-        if (sheets.expense) setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
+        if (supabaseHasRecords) {
+          setMonthlyRecords(cleanupExpiredTrash(records));
+        } else if (!localHasRecords) {
+          const migrated = await migrateFromLocalStorage();
+          if (migrated) {
+            const r2 = await loadMonthlyRecords();
+            if (r2) setMonthlyRecords(cleanupExpiredTrash(r2));
+          }
+        }
+
+        const localExpenses = loadFromLS('profitpilot_expenses', null);
+        if (exp && exp.length > 0) {
+          setExpenses(exp);
+          localStorage.setItem('profitpilot_expenses', JSON.stringify(exp));
+        } else if (localExpenses && localExpenses.length > 0) {
+          setExpenses(localExpenses);
+        }
+        if (tm && tm.length > 0) setTeam(tm);
+        if (logs) setSyncLogs(logs);
+        if (asgn) setAssignments(asgn);
+
+        const auditData = await loadAuditLogs();
+        if (auditData) setAuditLogs(auditData);
+
+        const sheets = await loadSheetConnections(user.id);
+        if (sheets) {
+          if (sheets.client) setClientSheet(prev => ({ ...prev, ...sheets.client }));
+          if (sheets.expense) setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
+        }
+      } catch (err) {
+        console.error('Failed to load data from Supabase:', err.message);
       }
 
       setDataReady(true);
@@ -242,10 +248,15 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
-    if (isSupabaseConfigured()) {
-      saveExpenses(expenses);
-    }
-    localStorage.setItem('profitpilot_expenses', JSON.stringify(expenses));
+    const timer = setTimeout(() => {
+      localStorage.setItem('profitpilot_expenses', JSON.stringify(expenses));
+      if (isSupabaseConfigured()) {
+        saveExpenses(expenses).catch(err => {
+          console.error('Supabase save failed (data preserved in localStorage):', err.message);
+        });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
   }, [dataReady, expenses]);
 
   useEffect(() => {
@@ -528,6 +539,14 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+  const saveExpensesNow = useCallback(async () => {
+    const current = expensesRef.current;
+    localStorage.setItem('profitpilot_expenses', JSON.stringify(current));
+    if (isSupabaseConfigured()) {
+      await saveExpenses(current);
+    }
+  }, []);
+
   const saveAssignments = useCallback(async (newAssignments) => {
     setAssignments(newAssignments);
     if (isSupabaseConfigured()) {
@@ -604,7 +623,7 @@ export const AppProvider = ({ children }) => {
       ensureMonthExists,
       saveRecordsNow,
       monthKey,
-      expenses, setExpenses, deleteExpenses,
+      expenses, setExpenses, deleteExpenses, saveExpensesNow,
       team, setTeam,
       syncLogs, setSyncLogs,
       taxRate, setTaxRate,

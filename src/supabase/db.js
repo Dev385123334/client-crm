@@ -153,7 +153,7 @@ export async function saveExpenses(expenses) {
     updated_at: new Date().toISOString()
   }));
   const { error } = await supabase.from('expenses').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
-  if (error) console.error('Failed to save expenses to DB:', error);
+  if (error) throw new Error(`Failed to save expenses to DB: ${error.message}`);
 }
 
 export async function loadTeam() {

@@ -24,7 +24,7 @@ function parseExpenseDate(dateStr) {
 const VITE_GOOGLE_SHEETS_API_KEY = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GOOGLE_SHEETS_API_KEY : '';
 
 export default function Integrations() {
-  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, clientSheet, setClientSheet, expenseSheet, setExpenseSheet } = useContext(AppContext);
+  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, saveExpensesNow, clientSheet, setClientSheet, expenseSheet, setExpenseSheet } = useContext(AppContext);
   const { userRole } = useContext(AuthContext);
   const baseRole = getBaseRole(userRole);
   const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor';
@@ -144,6 +144,14 @@ export default function Integrations() {
 
         if (allNew.length > 0) {
           setExpenses(prev => [...prev, ...allNew]);
+        }
+
+        await new Promise(r => setTimeout(r, 800));
+
+        try {
+          await saveExpensesNow();
+        } catch (saveErr) {
+          throw new Error(`Data was parsed but failed to save to database: ${saveErr.message}`, { cause: saveErr });
         }
 
         setSheet(prev => ({
