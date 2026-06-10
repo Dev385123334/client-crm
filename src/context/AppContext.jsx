@@ -1,6 +1,7 @@
-import React, { createContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { isSupabaseConfigured } from '../supabase/client';
+import { AuthContext } from './AuthContext';
 import {
   loadSettings, saveSettings,
   loadMonthlyRecords, saveMonthlyRecords,
@@ -10,7 +11,8 @@ import {
   migrateFromLocalStorage,
   deleteExpensesFromDB,
   loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
-  insertAuditLog, loadAuditLogs
+  insertAuditLog, loadAuditLogs,
+  loadSheetConnections, saveSheetConnection
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -21,7 +23,7 @@ function createMonthlyRecord(recordData, overrides = {}) {
   const id = recordData.id || uuidv4();
   return {
     id,
-    businessName: recordData.businessName || '',
+    businessName: (recordData.businessName || '').trim(),
     contactPerson: recordData.contactPerson || '',
     phone: recordData.phone || '',
     email: recordData.email || '',
@@ -113,6 +115,18 @@ export const AppProvider = ({ children }) => {
   const [assignments, setAssignments] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
 
+  const sheetConnectionDefaults = { url: '', connected: false, status: 'disconnected', lastSync: null, error: '', foundTabs: [] };
+  const [clientSheet, setClientSheet] = useState(() => {
+    const saved = loadFromLS('profitpilot_clientSheet', null);
+    return saved ? { ...sheetConnectionDefaults, ...saved } : { ...sheetConnectionDefaults };
+  });
+  const [expenseSheet, setExpenseSheet] = useState(() => {
+    const saved = loadFromLS('profitpilot_expenseSheet', null);
+    return saved ? { ...sheetConnectionDefaults, ...saved } : { ...sheetConnectionDefaults };
+  });
+
+  const { user } = useContext(AuthContext);
+
   useEffect(() => {
     async function init() {
       loadFromLocalStorage();
@@ -162,6 +176,12 @@ export const AppProvider = ({ children }) => {
 
         const auditData = await loadAuditLogs();
         if (auditData) setAuditLogs(auditData);
+
+        const sheets = user ? await loadSheetConnections(user.id) : null;
+        if (sheets) {
+          if (sheets.client) setClientSheet(prev => ({ ...prev, ...sheets.client }));
+          if (sheets.expense) setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
+        }
       }
 
       setDataReady(true);
@@ -244,6 +264,30 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('profitpilot_assignments', JSON.stringify(assignments));
   }, [dataReady, assignments]);
 
+  useEffect(() => {
+    if (!dataReady) return;
+    const persisted = { ...clientSheet };
+    delete persisted.syncing;
+    localStorage.setItem('profitpilot_clientSheet', JSON.stringify(persisted));
+    if (isSupabaseConfigured() && user) {
+      saveSheetConnection(user.id, 'client', persisted).catch(err =>
+        console.error('Failed to save client sheet to DB:', err.message)
+      );
+    }
+  }, [dataReady, clientSheet, user]);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    const persisted = { ...expenseSheet };
+    delete persisted.syncing;
+    localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(persisted));
+    if (isSupabaseConfigured() && user) {
+      saveSheetConnection(user.id, 'expense', persisted).catch(err =>
+        console.error('Failed to save expense sheet to DB:', err.message)
+      );
+    }
+  }, [dataReady, expenseSheet, user]);
+
   const monthKey = `${currentYear}-${currentMonth}`;
 
   const getMonthlyRecords = useCallback((month = currentMonth, year = currentYear) => {
@@ -271,15 +315,19 @@ export const AppProvider = ({ children }) => {
 
   const addRecordToMonth = useCallback((recordData, month = currentMonth, year = currentYear) => {
     const key = `${year}-${month}`;
-    const newRecord = createMonthlyRecord(recordData, { id: uuidv4() });
+    const cleanData = {
+      ...recordData,
+      businessName: (recordData.businessName || '').trim()
+    };
+    const newRecord = createMonthlyRecord(cleanData, { id: uuidv4() });
     setMonthlyRecords(prev => {
       const existing = prev[key] || [];
       const dup = existing.findIndex(r =>
-        r.businessName === recordData.businessName && !r.isDeleted
+        (r.businessName || '').trim().toLowerCase() === cleanData.businessName.toLowerCase() && !r.isDeleted
       );
       if (dup >= 0) {
         const updated = [...existing];
-        updated[dup] = { ...updated[dup], ...recordData };
+        updated[dup] = { ...updated[dup], ...cleanData };
         return { ...prev, [key]: updated };
       }
       return { ...prev, [key]: [...existing, newRecord] };
@@ -408,8 +456,9 @@ export const AppProvider = ({ children }) => {
   }, [currentMonth, currentYear]);
 
   useEffect(() => {
+    if (!dataReady) return;
     ensureMonthExists(currentMonth, currentYear);
-  }, [currentMonth, currentYear, ensureMonthExists]);
+  }, [currentMonth, currentYear, ensureMonthExists, dataReady]);
 
   const carryOverRecurringExpenses = useCallback((month, year) => {
     setExpenses(prev => {
@@ -554,7 +603,9 @@ export const AppProvider = ({ children }) => {
       taxRate, setTaxRate,
       convertToINR, formatUSD, formatINR,
       assignments, saveAssignments, deleteAssignment,
-      auditLogs, setAuditLogs, logAction, refreshAuditLogs
+      auditLogs, setAuditLogs, logAction, refreshAuditLogs,
+      clientSheet, setClientSheet,
+      expenseSheet, setExpenseSheet
     }}>
       {children}
     </AppContext.Provider>

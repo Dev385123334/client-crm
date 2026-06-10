@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import { parseGoogleSheetDate, parseUSDAmount, parseINRAmount, categorizeExpense, parseTabName, getBaseRole } from '../utils/helpers';
@@ -7,13 +7,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { Link2, RefreshCw, Clock, Pause, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
 import Papa from 'papaparse';
 import './Integrations.css';
-
-function loadFromLS(key, def) {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : def;
-  } catch { return def; }
-}
 
 function parseExpenseDate(dateStr) {
   if (!dateStr) return null;
@@ -31,34 +24,16 @@ function parseExpenseDate(dateStr) {
 const VITE_GOOGLE_SHEETS_API_KEY = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GOOGLE_SHEETS_API_KEY : '';
 
 export default function Integrations() {
-  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses } = useContext(AppContext);
+  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, clientSheet, setClientSheet, expenseSheet, setExpenseSheet } = useContext(AppContext);
   const { userRole } = useContext(AuthContext);
   const baseRole = getBaseRole(userRole);
   const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor';
   const canSeeExpense = baseRole === 'admin' || baseRole === 'hr_editor';
 
-  const [clientSheet, setClientSheet] = useState(() => {
-    const saved = loadFromLS('profitpilot_clientSheet', null);
-    const defaults = { url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
-    return saved ? { ...defaults, ...saved } : defaults;
-  });
-  const [expenseSheet, setExpenseSheet] = useState(() => {
-    const saved = loadFromLS('profitpilot_expenseSheet', null);
-    const defaults = { url: '', connected: false, syncing: false, lastSync: null, status: 'disconnected', error: '', foundTabs: [] };
-    return saved ? { ...defaults, ...saved } : defaults;
-  });
   const [syncFrequency, setSyncFrequency] = useState(30);
   const [setupStep, setSetupStep] = useState(null);
   const [setupError, setSetupError] = useState('');
   const [syncProgress, setSyncProgress] = useState('');
-
-  useEffect(() => {
-    localStorage.setItem('profitpilot_clientSheet', JSON.stringify(clientSheet));
-  }, [clientSheet]);
-
-  useEffect(() => {
-    localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(expenseSheet));
-  }, [expenseSheet]);
 
   function addLog(type, message, status) {
     setSyncLogs(prev => [{

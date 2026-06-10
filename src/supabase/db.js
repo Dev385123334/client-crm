@@ -274,6 +274,48 @@ export async function deleteAuditLogs(ids) {
   await supabase.from('audit_logs').delete().in('id', ids);
 }
 
+export async function loadSheetConnections(userId) {
+  if (!isSupabaseConfigured() || !userId) return null;
+  const { data, error } = await supabase.from('sheet_connections').select('*').eq('user_id', userId);
+  if (error || !data) return null;
+  const result = {};
+  for (const row of data) {
+    result[row.sheet_type] = {
+      url: row.url || '',
+      connected: row.connected || false,
+      status: row.status || 'disconnected',
+      lastSync: row.last_sync || null,
+      error: row.error || '',
+      foundTabs: row.found_tabs || []
+    };
+  }
+  return result;
+}
+
+export async function saveSheetConnection(userId, sheetType, data) {
+  if (!isSupabaseConfigured() || !userId) return;
+  const { error } = await supabase.from('sheet_connections').upsert({
+    user_id: userId,
+    sheet_type: sheetType,
+    url: data.url || '',
+    connected: data.connected || false,
+    status: data.status || 'disconnected',
+    last_sync: data.lastSync || '',
+    error: data.error || '',
+    found_tabs: data.foundTabs || [],
+    updated_at: new Date().toISOString()
+  }, {
+    onConflict: 'user_id,sheet_type',
+    ignoreDuplicates: false
+  });
+  if (error) console.error('Failed to save sheet connection:', error.message);
+}
+
+export async function deleteSheetConnection(userId, sheetType) {
+  if (!isSupabaseConfigured() || !userId) return;
+  await supabase.from('sheet_connections').delete().eq('user_id', userId).eq('sheet_type', sheetType);
+}
+
 export async function migrateFromLocalStorage() {
   if (!isSupabaseConfigured()) return false;
   const loadLS = (key, def) => {
