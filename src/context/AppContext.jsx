@@ -68,6 +68,25 @@ function findPreviousMonthKey(records, targetMonth, targetYear) {
   return bestKey;
 }
 
+function dedupRecords(records) {
+  for (const key of Object.keys(records)) {
+    const seen = new Set();
+    const active = [];
+    const deleted = [];
+    for (const r of records[key]) {
+      if (r.isDeleted) { deleted.push(r); continue; }
+      const name = (r.businessName || '').trim().toLowerCase();
+      if (!name || !seen.has(name)) {
+        if (name) seen.add(name);
+        active.push(r);
+      }
+    }
+    records[key] = [...active, ...deleted];
+    if (records[key].length === 0) delete records[key];
+  }
+  return records;
+}
+
 function cleanupExpiredTrash(records) {
   const now = Date.now();
   const thirtyDays = 30 * 24 * 60 * 60 * 1000;
@@ -137,7 +156,7 @@ export const AppProvider = ({ children }) => {
 
     const saved = loadFromLS('profitpilot_monthlyRecords', null);
     if (saved) {
-      setMonthlyRecords(cleanupExpiredTrash(saved));
+      setMonthlyRecords(dedupRecords(cleanupExpiredTrash(saved)));
     } else {
       setMonthlyRecords({});
     }
@@ -183,12 +202,12 @@ export const AppProvider = ({ children }) => {
         const supabaseHasRecords = records && Object.keys(records).length > 0;
 
         if (supabaseHasRecords) {
-          setMonthlyRecords(cleanupExpiredTrash(records));
+          setMonthlyRecords(dedupRecords(cleanupExpiredTrash(records)));
         } else if (!localHasRecords) {
           const migrated = await migrateFromLocalStorage();
           if (migrated) {
             const r2 = await loadMonthlyRecords();
-            if (r2) setMonthlyRecords(cleanupExpiredTrash(r2));
+            if (r2) setMonthlyRecords(dedupRecords(cleanupExpiredTrash(r2)));
           }
         }
 
