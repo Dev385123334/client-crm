@@ -125,89 +125,95 @@ export const AppProvider = ({ children }) => {
     return saved ? { ...sheetConnectionDefaults, ...saved } : { ...sheetConnectionDefaults };
   });
 
-  const { user } = useContext(AuthContext);
+  const { user, loading: authLoading } = useContext(AuthContext);
+
+  function loadFromLocalStorage() {
+    setExchangeRate(loadFromLS('profitpilot_exchangeRate', 83));
+    setProfitGoal(loadFromLS('profitpilot_profitGoal', 200000));
+    setCurrencyView(loadFromLS('profitpilot_currencyView', 'USD'));
+    setTaxRate(loadFromLS('profitpilot_taxRate', 0));
+
+    const saved = loadFromLS('profitpilot_monthlyRecords', null);
+    if (saved) {
+      setMonthlyRecords(cleanupExpiredTrash(saved));
+    } else {
+      setMonthlyRecords({});
+    }
+
+    setExpenses(loadFromLS('profitpilot_expenses', []));
+    setTeam(loadFromLS('profitpilot_team', []));
+    setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
+    setAssignments(loadFromLS('profitpilot_assignments', []));
+  }
 
   useEffect(() => {
-    async function init() {
-      loadFromLocalStorage();
+    loadFromLocalStorage();
+    if (!isSupabaseConfigured()) {
+      setDataReady(true);
+    }
+  }, []);
 
-      if (isSupabaseConfigured()) {
-        const [settings, records, exp, tm, logs, asgn] = await Promise.all([
-          loadSettings(),
-          loadMonthlyRecords(),
-          loadExpenses(),
-          loadTeam(),
-          loadSyncLogs(),
-          loadClientPmAssignments()
-        ]);
+  useEffect(() => {
+    if (!isSupabaseConfigured() || authLoading) return;
+    if (!user) return;
 
-        if (settings) {
-          setExchangeRate(settings.exchangeRate);
-          setProfitGoal(settings.profitGoal);
-          setCurrencyView(settings.currencyView);
-          if (settings.taxRate !== undefined) setTaxRate(settings.taxRate);
+    async function loadSupabaseData() {
+      const [settings, records, exp, tm, logs, asgn] = await Promise.all([
+        loadSettings(),
+        loadMonthlyRecords(),
+        loadExpenses(),
+        loadTeam(),
+        loadSyncLogs(),
+        loadClientPmAssignments()
+      ]);
+
+      if (settings) {
+        setExchangeRate(settings.exchangeRate);
+        setProfitGoal(settings.profitGoal);
+        setCurrencyView(settings.currencyView);
+        if (settings.taxRate !== undefined) setTaxRate(settings.taxRate);
+      }
+
+      const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
+      const localHasRecords = localRecords && Object.keys(localRecords).length > 0;
+
+      const supabaseHasRecords = records && Object.keys(records).length > 0;
+
+      if (supabaseHasRecords) {
+        setMonthlyRecords(cleanupExpiredTrash(records));
+      } else if (!localHasRecords) {
+        const migrated = await migrateFromLocalStorage();
+        if (migrated) {
+          const r2 = await loadMonthlyRecords();
+          if (r2) setMonthlyRecords(cleanupExpiredTrash(r2));
         }
+      }
 
-        const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
-        const localHasRecords = localRecords && Object.keys(localRecords).length > 0;
+      const localExpenses = loadFromLS('profitpilot_expenses', null);
+      if (exp && exp.length > 0) {
+        setExpenses(exp);
+        localStorage.setItem('profitpilot_expenses', JSON.stringify(exp));
+      } else if (localExpenses && localExpenses.length > 0) {
+        setExpenses(localExpenses);
+      }
+      if (tm && tm.length > 0) setTeam(tm);
+      if (logs) setSyncLogs(logs);
+      if (asgn) setAssignments(asgn);
 
-        const supabaseHasRecords = records && Object.keys(records).length > 0;
+      const auditData = await loadAuditLogs();
+      if (auditData) setAuditLogs(auditData);
 
-        if (supabaseHasRecords) {
-          setMonthlyRecords(cleanupExpiredTrash(records));
-        } else if (!localHasRecords) {
-          const migrated = await migrateFromLocalStorage();
-          if (migrated) {
-            const r2 = await loadMonthlyRecords();
-            if (r2) setMonthlyRecords(cleanupExpiredTrash(r2));
-          }
-        }
-
-        const localExpenses = loadFromLS('profitpilot_expenses', null);
-        if (exp && exp.length > 0) {
-          setExpenses(exp);
-          localStorage.setItem('profitpilot_expenses', JSON.stringify(exp));
-        } else if (localExpenses && localExpenses.length > 0) {
-          setExpenses(localExpenses);
-        }
-        if (tm && tm.length > 0) setTeam(tm);
-        if (logs) setSyncLogs(logs);
-        if (asgn) setAssignments(asgn);
-
-        const auditData = await loadAuditLogs();
-        if (auditData) setAuditLogs(auditData);
-
-        const sheets = user ? await loadSheetConnections(user.id) : null;
-        if (sheets) {
-          if (sheets.client) setClientSheet(prev => ({ ...prev, ...sheets.client }));
-          if (sheets.expense) setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
-        }
+      const sheets = await loadSheetConnections(user.id);
+      if (sheets) {
+        if (sheets.client) setClientSheet(prev => ({ ...prev, ...sheets.client }));
+        if (sheets.expense) setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
       }
 
       setDataReady(true);
     }
 
-    function loadFromLocalStorage() {
-      setExchangeRate(loadFromLS('profitpilot_exchangeRate', 83));
-      setProfitGoal(loadFromLS('profitpilot_profitGoal', 200000));
-      setCurrencyView(loadFromLS('profitpilot_currencyView', 'USD'));
-      setTaxRate(loadFromLS('profitpilot_taxRate', 0));
-
-      const saved = loadFromLS('profitpilot_monthlyRecords', null);
-      if (saved) {
-        setMonthlyRecords(cleanupExpiredTrash(saved));
-      } else {
-        setMonthlyRecords({});
-      }
-
-      setExpenses(loadFromLS('profitpilot_expenses', []));
-      setTeam(loadFromLS('profitpilot_team', []));
-      setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
-      setAssignments(loadFromLS('profitpilot_assignments', []));
-    }
-
-    init();
-  }, []);
+    loadSupabaseData();
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -505,8 +511,9 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    if (!dataReady) return;
     carryOverRecurringExpenses(currentMonth, currentYear);
-  }, [currentMonth, currentYear, carryOverRecurringExpenses]);
+  }, [currentMonth, currentYear, carryOverRecurringExpenses, dataReady]);
 
   const deleteExpenses = useCallback(async (ids) => {
     setExpenses(prev => prev.filter(e => !ids.includes(e.id)));
