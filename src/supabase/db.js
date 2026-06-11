@@ -179,7 +179,8 @@ export async function saveTeam(team) {
     monthly_salary: m.monthlySalary,
     updated_at: new Date().toISOString()
   }));
-  await supabase.from('team_members').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  const { error } = await supabase.from('team_members').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  if (error) throw new Error(`Failed to save team to DB: ${error.message}`);
 }
 
 export async function loadSyncLogs() {

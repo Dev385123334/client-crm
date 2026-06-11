@@ -13,6 +13,16 @@ create table if not exists settings (
   updated_at timestamptz not null default now()
 );
 
+alter table settings enable row level security;
+
+drop policy if exists "authenticated_all" on settings;
+create policy "authenticated_all"
+  on settings
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
 -- 2. Monthly client records (per-month snapshots)
 create table if not exists monthly_client_records (
   id uuid default gen_random_uuid() primary key,
@@ -104,6 +114,16 @@ create table if not exists team_members (
   updated_at timestamptz not null default now()
 );
 
+alter table team_members enable row level security;
+
+drop policy if exists "authenticated_all" on team_members;
+create policy "authenticated_all"
+  on team_members
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
 -- 6. Sync logs table
 create table if not exists sync_logs (
   id uuid default gen_random_uuid() primary key,
@@ -112,6 +132,16 @@ create table if not exists sync_logs (
   status text not null default '',
   created_at timestamptz not null default now()
 );
+
+alter table sync_logs enable row level security;
+
+drop policy if exists "authenticated_all" on sync_logs;
+create policy "authenticated_all"
+  on sync_logs
+  for all
+  to authenticated
+  using (true)
+  with check (true);
 
 -- 7. Insert default settings row (if not exists)
 insert into settings (exchange_rate, profit_goal, currency_view)
