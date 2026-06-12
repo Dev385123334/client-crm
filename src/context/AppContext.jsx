@@ -10,6 +10,7 @@ import {
   loadSyncLogs, saveSyncLogs,
   migrateFromLocalStorage,
   deleteExpensesFromDB,
+  deleteMonthlyRecords,
   loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
   insertAuditLog, loadAuditLogs,
   loadSheetConnections, saveSheetConnection
@@ -452,8 +453,15 @@ export const AppProvider = ({ children }) => {
     });
   }, []);
 
-  const permanentlyDeleteRecord = useCallback((recordId, month, year) => {
+  const permanentlyDeleteRecord = useCallback(async (recordId, month, year) => {
     const key = `${year}-${month}`;
+    if (isSupabaseConfigured()) {
+      try {
+        await deleteMonthlyRecords([recordId]);
+      } catch (err) {
+        console.error('Failed to delete record from Supabase:', err.message);
+      }
+    }
     setMonthlyRecords(prev => {
       const records = prev[key];
       if (!records) return prev;
@@ -547,7 +555,11 @@ export const AppProvider = ({ children }) => {
 
   const deleteExpenses = useCallback(async (ids) => {
     setExpenses(prev => prev.filter(e => !ids.includes(e.id)));
-    await deleteExpensesFromDB(ids);
+    try {
+      await deleteExpensesFromDB(ids);
+    } catch (err) {
+      console.error('Failed to delete expenses from DB:', err.message);
+    }
   }, []);
 
   const saveRecordsNow = useCallback(async () => {
