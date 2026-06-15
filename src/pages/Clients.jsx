@@ -96,7 +96,7 @@ export default function Clients() {
   const nextMonthName = monthNames[nextMonthNum];
   const curMonthName = monthNames[parseInt(currentMonth)];
 
-  const cashReceived = records.reduce((s, r) => s + ((r.paymentReceived || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
+  const cashReceived = records.reduce((s, r) => s + ((r.paymentReceived || 0) + (r.upsellAmount || 0) - (r.downsellAmount || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
   const cashReceivedAfterTax = cashReceived * (1 - taxRate / 100);
 
   const upcomingCollections = activeRecords.map(r => {
@@ -251,8 +251,8 @@ export default function Clients() {
       paymentMethod: record.paymentMethod || 'Stripe',
       notes: record.notes || '',
       paymentReceived: record.paymentReceived || '',
-      upsell: '',
-      downsell: '',
+      upsell: record.upsellAmount || '',
+      downsell: record.downsellAmount || '',
       handledBy: record.handledBy || 'Unassigned'
     });
     setEditRecordId(record.id);
@@ -289,7 +289,7 @@ export default function Clients() {
       phone: form.phone,
       email: form.email,
       website: form.website,
-      monthlyPrice: adjustedPrice,
+      monthlyPrice: basePrice,
       onboardingDate: form.onboardingDate,
       billingStartDate: form.billingStartDate || form.onboardingDate,
       contractEndDate: form.contractEndDate,
@@ -749,7 +749,7 @@ export default function Clients() {
                   received: record.paymentReceived || 0,
                   refund: record.refundAmount || 0,
                   chargeback: record.chargebackAmount || 0,
-                  net: (record.paymentReceived || 0) - (record.refundAmount || 0) - (record.chargebackAmount || 0)
+                  net: (record.paymentReceived || 0) + (record.upsellAmount || 0) - (record.downsellAmount || 0) - (record.refundAmount || 0) - (record.chargebackAmount || 0)
                 };
                 if (ps.hasPayment) {
                   ps.label = 'PAID';
@@ -815,7 +815,7 @@ export default function Clients() {
                             <span className="text-xs" style={{ color: 'var(--success)', fontWeight: 600 }}>
                               +{formatUSD(record.upsellAmount)}
                               <span className="text-muted" style={{ fontWeight: 400 }}>
-                                {' '}({formatUSD(record.monthlyPrice - record.upsellAmount + record.downsellAmount)})
+                                {' '}({formatUSD(record.monthlyPrice + record.upsellAmount - record.downsellAmount)})
                               </span>
                             </span>
                           )}
@@ -823,7 +823,7 @@ export default function Clients() {
                             <span className="text-xs" style={{ color: 'var(--danger)', fontWeight: 600 }}>
                               -{formatUSD(record.downsellAmount)}
                               <span className="text-muted" style={{ fontWeight: 400 }}>
-                                {' '}({formatUSD(record.monthlyPrice + record.downsellAmount - record.upsellAmount)})
+                                {' '}({formatUSD(record.monthlyPrice - record.downsellAmount + record.upsellAmount)})
                               </span>
                             </span>
                           )}
@@ -1021,7 +1021,7 @@ export default function Clients() {
               </div>
               <div className="mt-3 text-right text-sm">
                 <span className="font-semibold text-heading">
-                  Net Receipt: {formatUSD(parseFloat(form.paymentReceived) || 0)}
+                  Net Receipt: {formatUSD((parseFloat(form.paymentReceived) || 0) + (parseFloat(form.upsell) || 0) - (parseFloat(form.downsell) || 0))}
                 </span>
               </div>
             </div>
