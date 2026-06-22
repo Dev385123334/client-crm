@@ -20,9 +20,8 @@ export default function Clients() {
     softDeleteRecordFromAllMonths, restoreRecord, permanentlyDeleteRecord,
     getAllTrashRecords, getMonthlyRecords,
     currentMonth, currentYear, monthKey,
-    exchangeRate, setExchangeRate, currencyView, setCurrencyView,
-    convertToINR, formatUSD, formatINR,
-    taxRate, setTaxRate,
+    exchangeRate, convertToINR, formatUSD, formatINR,
+    bankDeposits,
     assignments, saveAssignments, deleteAssignment,
     logAction
   } = useContext(AppContext);
@@ -96,8 +95,16 @@ export default function Clients() {
   const nextMonthName = monthNames[nextMonthNum];
   const curMonthName = monthNames[parseInt(currentMonth)];
 
-  const cashReceived = records.reduce((s, r) => s + ((r.paymentReceived || 0) + (r.upsellAmount || 0) - (r.downsellAmount || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
-  const cashReceivedAfterTax = cashReceived * (1 - taxRate / 100);
+  const invoicedThisMonth = records.reduce((s, r) => s + ((r.paymentReceived || 0) + (r.upsellAmount || 0) - (r.downsellAmount || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
+
+  const actualInrThisMonth = bankDeposits
+    .filter(d => {
+      const dDate = new Date(d.date);
+      const dMonth = String(dDate.getMonth() + 1).padStart(2, '0');
+      const dYear = String(dDate.getFullYear());
+      return dMonth === currentMonth && dYear === currentYear;
+    })
+    .reduce((sum, d) => sum + d.inrAmount, 0);
 
   const upcomingCollections = activeRecords.map(r => {
     const billingDate = r.billingStartDate || r.onboardingDate;
@@ -512,40 +519,6 @@ export default function Clients() {
 
       <NotificationPanel />
 
-      {/* Config Bar */}
-      {baseRole !== 'pm_editor' && <div className="config-bar">
-        <div className="config-bar__item">
-          <span className="config-bar__label">1 USD = ₹</span>
-          <input
-            className="config-bar__input"
-            type="number"
-            step="0.01"
-            value={exchangeRate}
-            onChange={e => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val) && val > 0) setExchangeRate(val);
-            }}
-          />
-        </div>
-        <div className="config-bar__divider" />
-        <div className="config-bar__item">
-          <span className="config-bar__label">Tax:</span>
-          <input
-            className="config-bar__input config-bar__input--sm"
-            type="number"
-            step="0.1"
-            min="0"
-            max="100"
-            value={taxRate}
-            onChange={e => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val) && val >= 0 && val <= 100) setTaxRate(val);
-            }}
-          />
-          <span className="config-bar__label">%</span>
-        </div>
-      </div>}
-
       {/* Stats Row */}
       <div className="stats-row">
         <div className="card stat-card">
@@ -553,18 +526,14 @@ export default function Clients() {
           <div className="stat-value">{activeCount}</div>
         </div>
         <div className="card stat-card" style={{ background: 'var(--success-bg)', borderColor: 'var(--success)' }}>
-          <div className="stat-label" style={{ color: 'var(--success)' }}>Cash Received This Month</div>
-          {taxRate > 0 ? (
-            <>
-              <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(cashReceivedAfterTax) : showDual(cashReceivedAfterTax)}</div>
-              <div className="stat-sub">After {taxRate}% tax deduction (gross: {baseRole === 'pm_editor' ? showAmount(cashReceived) : showDual(cashReceived)})</div>
-            </>
-          ) : (
-            <>
-              <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(cashReceived) : showDual(cashReceived)}</div>
-              <div className="stat-sub">Net after refunds/chargebacks</div>
-            </>
-          )}
+          <div className="stat-label" style={{ color: 'var(--success)' }}>Actual INR Received This Month</div>
+          <div className="stat-value" style={{ fontSize: 20, fontWeight: 800 }}>{formatINR(actualInrThisMonth)}</div>
+          <div className="stat-sub">From Bank Deposit Log — confirmed bank amount, not estimated.</div>
+        </div>
+        <div className="card stat-card">
+          <div className="stat-label">Invoiced This Month (USD)</div>
+          <div className="stat-value">{formatUSD(invoicedThisMonth)}</div>
+          <div className="stat-sub">Gross amount — before processing fees and conversion.</div>
         </div>
         <div className="card stat-card" style={{ background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
           <div className="stat-label" style={{ color: 'var(--info)' }}>Current Month MRR</div>

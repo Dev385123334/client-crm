@@ -1,0 +1,290 @@
+.bank-deposits-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.add-deposit-btn {
+  align-self: flex-start;
+}
+
+/* ── Entry Row ── */
+.deposit-entry-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deposit-entry-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.deposit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deposit-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.deposit-field-date {
+  min-width: 160px;
+}
+
+.deposit-field-date .input-field {
+  width: 100%;
+}
+
+.deposit-field-amount {
+  flex: 1;
+  min-width: 200px;
+}
+
+.deposit-amount-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deposit-currency {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-heading);
+  line-height: 1;
+}
+
+.deposit-amount-input {
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  padding: 10px 12px !important;
+}
+
+.deposit-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+.deposit-entry-extras {
+  display: flex;
+  align-items: center;
+}
+
+.add-note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+}
+
+.add-note-link:hover {
+  color: var(--info);
+  background: var(--info-bg);
+}
+
+.deposit-note-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.deposit-note-input {
+  flex: 1;
+  font-size: 13px !important;
+}
+
+.deposit-error {
+  font-size: 12px;
+  color: var(--danger);
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.deposit-error--edit {
+  padding: 4px 0 0 0;
+}
+
+/* ── List ── */
+.deposit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.deposit-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.deposit-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #f1f5f9;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border: 1px solid var(--border-light);
+  border-bottom: none;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.deposit-group-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.deposit-group-total {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-label);
+}
+
+.deposit-group-list {
+  border: 1px solid var(--border-light);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  overflow: hidden;
+}
+
+.deposit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #fff;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.3s ease;
+}
+
+.deposit-row:last-child {
+  border-bottom: none;
+}
+
+.deposit-row:hover {
+  background: #f8fafc;
+}
+
+.deposit-row--highlight {
+  animation: deposit-flash 1.5s ease;
+}
+
+@keyframes deposit-flash {
+  0% { background: #dbeafe; }
+  100% { background: #fff; }
+}
+
+.deposit-row-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.deposit-row-date {
+  font-size: 13px;
+  color: var(--text-muted);
+  min-width: 110px;
+}
+
+.deposit-row-amount {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-heading);
+  min-width: 100px;
+}
+
+.deposit-row-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.deposit-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.deposit-row:hover .deposit-row-actions {
+  opacity: 1;
+}
+
+.deposit-row-actions .btn-icon {
+  width: 28px;
+  height: 28px;
+}
+
+/* ── Edit Row ── */
+.deposit-edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.deposit-edit-fields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.deposit-edit-fields .deposit-field-date {
+  min-width: 140px;
+}
+
+.deposit-edit-fields .deposit-field-amount {
+  min-width: 140px;
+  flex: 0 1 auto;
+}
+
+.deposit-edit-fields .deposit-field-note {
+  flex: 1;
+  min-width: 160px;
+}
+
+.deposit-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deposit-edit-actions .btn-icon {
+  width: 28px;
+  height: 28px;
+}
+
+/* ── Empty state ── */
+.bank-deposits-page .empty-state {
+  margin: 0;
+}

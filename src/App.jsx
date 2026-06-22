@@ -5,6 +5,7 @@ import AuthGuard from './components/AuthGuard';
 import Login from './pages/Login';
 import Clients from './pages/Clients';
 import Expenses from './pages/Expenses';
+import BankDeposits from './pages/BankDeposits';
 import Team from './pages/Team';
 import PnLSummary from './pages/PnLSummary';
 import PMRetention from './pages/PMRetention';
@@ -26,6 +27,7 @@ function App() {
               <Route path="/" element={<Navigate to="/clients" replace />} />
               <Route path="/clients" element={<AuthGuard><Clients /></AuthGuard>} />
               <Route path="/expenses" element={<AuthGuard><Expenses /></AuthGuard>} />
+              <Route path="/bank-deposits" element={<AuthGuard><BankDeposits /></AuthGuard>} />
               <Route path="/team" element={<AuthGuard><Team /></AuthGuard>} />
               <Route path="/pnl" element={<AuthGuard><PnLSummary /></AuthGuard>} />
               <Route path="/retention" element={<AuthGuard><PMRetention /></AuthGuard>} />

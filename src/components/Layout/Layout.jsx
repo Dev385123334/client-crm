@@ -3,13 +3,14 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { AuthContext } from '../../context/AuthContext';
 import { getBaseRole } from '../../utils/helpers';
-import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck, LogOut, UserPlus, ClipboardList } from 'lucide-react';
+import { Users, Receipt, UsersRound, BarChart3, TrendingUp, Link2, ChevronLeft, ChevronRight, ScatterChart, UserCheck, LogOut, UserPlus, ClipboardList, Landmark } from 'lucide-react';
 import SecurityLayer from '../SecurityLayer/SecurityLayer';
 import '../SecurityLayer/SecurityLayer.css';
 import './Layout.css';
 
 const allNavItems = [
   { path: '/clients', label: 'Clients', icon: Users, roles: ['admin', 'pm_editor'] },
+  { path: '/bank-deposits', label: 'Bank Deposits', icon: Landmark, roles: ['admin'] },
   { path: '/expenses', label: 'Expenses', icon: Receipt, roles: ['admin', 'hr_editor'] },
   { path: '/team', label: 'Team', icon: UsersRound, roles: ['admin', 'hr_editor'] },
   { path: '/pnl', label: 'P&L Summary', icon: BarChart3, roles: ['admin'] },

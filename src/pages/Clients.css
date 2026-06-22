@@ -537,61 +537,6 @@
 
 /* ── Client Status Columns ── */
 
-/* ── Config Bar ── */
-.config-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
-}
-
-.config-bar__item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.config-bar__label {
-  font-size: 13px;
-  color: var(--text-label);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.config-bar__input {
-  width: 72px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  font-family: var(--font);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-heading);
-  background: var(--bg-input);
-  outline: none;
-  text-align: center;
-  transition: border-color 0.15s ease;
-}
-
-.config-bar__input:focus {
-  border-color: var(--info);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.config-bar__input--sm {
-  width: 60px;
-}
-
-.config-bar__divider {
-  width: 1px;
-  height: 24px;
-  background: var(--border-light);
-  flex-shrink: 0;
-}
 .status-column {
   border-radius: var(--radius-md);
   padding: 16px;

@@ -13,7 +13,8 @@ import {
   deleteMonthlyRecords,
   loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
   insertAuditLog, loadAuditLogs,
-  loadSheetConnections, saveSheetConnection
+  loadSheetConnections, saveSheetConnection,
+  loadBankDeposits, saveBankDeposits, deleteBankDepositFromDB
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -133,7 +134,7 @@ export const AppProvider = ({ children }) => {
   useEffect(() => { expensesRef.current = expenses; }, [expenses]);
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
-  const [taxRate, setTaxRate] = useState(() => loadFromLS('profitpilot_taxRate', 0));
+  const [bankDeposits, setBankDeposits] = useState(() => loadFromLS('profitpilot_bankDeposits', []));
   const [assignments, setAssignments] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
 
@@ -153,7 +154,6 @@ export const AppProvider = ({ children }) => {
     setExchangeRate(loadFromLS('profitpilot_exchangeRate', 83));
     setProfitGoal(loadFromLS('profitpilot_profitGoal', 200000));
     setCurrencyView(loadFromLS('profitpilot_currencyView', 'USD'));
-    setTaxRate(loadFromLS('profitpilot_taxRate', 0));
 
     const saved = loadFromLS('profitpilot_monthlyRecords', null);
     if (saved) {
@@ -181,20 +181,25 @@ export const AppProvider = ({ children }) => {
 
     async function loadSupabaseData() {
       try {
-        const [settings, records, exp, tm, logs, asgn] = await Promise.all([
+        const [settings, records, exp, tm, logs, asgn, deposits] = await Promise.all([
           loadSettings(),
           loadMonthlyRecords(),
           loadExpenses(),
           loadTeam(),
           loadSyncLogs(),
-          loadClientPmAssignments()
+          loadClientPmAssignments(),
+          loadBankDeposits()
         ]);
 
         if (settings) {
           setExchangeRate(settings.exchangeRate);
           setProfitGoal(settings.profitGoal);
           setCurrencyView(settings.currencyView);
-          if (settings.taxRate !== undefined) setTaxRate(settings.taxRate);
+        }
+
+        if (deposits) {
+          setBankDeposits(deposits);
+          localStorage.setItem('profitpilot_bankDeposits', JSON.stringify(deposits));
         }
 
         const localRecords = loadFromLS('profitpilot_monthlyRecords', null);
@@ -243,15 +248,24 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
-    localStorage.setItem('profitpilot_taxRate', JSON.stringify(taxRate));
+    localStorage.setItem('profitpilot_bankDeposits', JSON.stringify(bankDeposits));
     if (isSupabaseConfigured()) {
-      saveSettings(exchangeRate, profitGoal, currencyView, taxRate);
+      saveBankDeposits(bankDeposits).catch(err => {
+        console.error('Supabase save failed (data preserved in localStorage):', err.message);
+      });
+    }
+  }, [dataReady, bankDeposits]);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    if (isSupabaseConfigured()) {
+      saveSettings(exchangeRate, profitGoal, currencyView);
     } else {
       localStorage.setItem('profitpilot_exchangeRate', JSON.stringify(exchangeRate));
       localStorage.setItem('profitpilot_profitGoal', JSON.stringify(profitGoal));
       localStorage.setItem('profitpilot_currencyView', JSON.stringify(currencyView));
     }
-  }, [dataReady, exchangeRate, profitGoal, currencyView, taxRate]);
+  }, [dataReady, exchangeRate, profitGoal, currencyView]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -621,6 +635,43 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+  const addBankDeposit = useCallback((depositData) => {
+    const newDeposit = {
+      id: uuidv4(),
+      date: depositData.date,
+      inrAmount: Number(depositData.inrAmount),
+      note: depositData.note || null,
+      createdAt: new Date().toISOString()
+    };
+    setBankDeposits(prev => [newDeposit, ...prev]);
+    return newDeposit;
+  }, []);
+
+  const updateBankDeposit = useCallback((id, updates) => {
+    setBankDeposits(prev => prev.map(d =>
+      d.id === id ? { ...d, ...updates } : d
+    ));
+  }, []);
+
+  const deleteBankDeposit = useCallback(async (id) => {
+    setBankDeposits(prev => prev.filter(d => d.id !== id));
+    try {
+      await deleteBankDepositFromDB(id);
+    } catch (err) {
+      console.error('Failed to delete bank deposit from DB:', err.message);
+    }
+  }, []);
+
+  const getBankDepositsForMonth = useCallback((month, year) => {
+    const paddedMonth = String(month).padStart(2, '0');
+    return bankDeposits.filter(d => {
+      const dDate = new Date(d.date);
+      const dMonth = String(dDate.getMonth() + 1).padStart(2, '0');
+      const dYear = String(dDate.getFullYear());
+      return dMonth === paddedMonth && dYear === String(year);
+    });
+  }, [bankDeposits]);
+
   const currentMonthRecords = (monthlyRecords[monthKey] || []).filter(r => !r.isDeleted);
   const currentMonthActive = currentMonthRecords.filter(r => r.status === 'Active');
   const currentMonthCancelled = currentMonthRecords.filter(r => r.status === 'Cancelled');
@@ -657,7 +708,9 @@ export const AppProvider = ({ children }) => {
       expenses, setExpenses, deleteExpenses, saveExpensesNow,
       team, setTeam,
       syncLogs, setSyncLogs,
-      taxRate, setTaxRate,
+      bankDeposits, setBankDeposits,
+      addBankDeposit, updateBankDeposit, deleteBankDeposit,
+      getBankDepositsForMonth,
       convertToINR, formatUSD, formatINR,
       assignments, saveAssignments, deleteAssignment,
       auditLogs, setAuditLogs, logAction, refreshAuditLogs,

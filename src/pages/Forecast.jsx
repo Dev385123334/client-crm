@@ -6,20 +6,18 @@ import { AlertTriangle, Zap, Target } from 'lucide-react';
 import './Forecast.css';
 
 export default function Forecast() {
-  const { currentMonthActive, expenses, currentMonth, currentYear, exchangeRate, convertToINR, formatUSD, formatINR, profitGoal, taxRate } = useContext(AppContext);
+  const { currentMonthActive, expenses, currentMonth, currentYear, exchangeRate, convertToINR, formatUSD, formatINR, profitGoal } = useContext(AppContext);
 
   const [churnSlider, setChurnSlider] = useState(10);
 
   const activeClients = currentMonthActive;
   const totalMRR = activeClients.reduce((s, r) => s + r.monthlyPrice, 0);
-  const taxMultiplier = taxRate > 0 ? (1 - taxRate / 100) : 1;
-  const totalMRR_afterTax = totalMRR * taxMultiplier;
   const avgClientValue = activeClients.length > 0 ? totalMRR / activeClients.length : 0;
 
   const monthExpenses = expenses.filter(e => e.month === currentMonth && e.year === currentYear);
   const totalExpenses_INR = monthExpenses.reduce((s, e) => s + e.amount, 0);
   const totalExpenses_USD = totalExpenses_INR / exchangeRate;
-  const projectedARR = totalMRR_afterTax * 12;
+  const projectedARR = totalMRR * 12;
 
   const scenarios = useMemo(() => {
     const months = [];
@@ -29,24 +27,23 @@ export default function Forecast() {
       const mIdx = (startMonthIdx + i) % 12;
       months.push({
         month: monthNames[mIdx],
-        Pessimistic: Math.round(totalMRR_afterTax * Math.pow(1 - 0.20, i)),
-        Realistic: Math.round(totalMRR_afterTax * Math.pow(1 - 0.10, i)),
-        Optimistic: Math.round(totalMRR_afterTax * Math.pow(1 - 0.05, i)),
-        Growth: Math.round(totalMRR_afterTax + (avgClientValue * taxMultiplier * 2 * i)),
-        Custom: Math.round(totalMRR_afterTax * Math.pow(1 - churnSlider / 100, i))
+        Pessimistic: Math.round(totalMRR * Math.pow(1 - 0.20, i)),
+        Realistic: Math.round(totalMRR * Math.pow(1 - 0.10, i)),
+        Optimistic: Math.round(totalMRR * Math.pow(1 - 0.05, i)),
+        Growth: Math.round(totalMRR + (avgClientValue * 2 * i)),
+        Custom: Math.round(totalMRR * Math.pow(1 - churnSlider / 100, i))
       });
     }
     return months;
-  }, [totalMRR_afterTax, avgClientValue, taxMultiplier, currentMonth, churnSlider]);
+  }, [totalMRR, avgClientValue, currentMonth, churnSlider]);
 
-  const avgClientValueAfterTax = avgClientValue * taxMultiplier;
-  const clientsToBreakEven = avgClientValueAfterTax > 0 ? Math.ceil(totalExpenses_USD / avgClientValueAfterTax) : 0;
+  const clientsToBreakEven = avgClientValue > 0 ? Math.ceil(totalExpenses_USD / avgClientValue) : 0;
   const profitBuffer = activeClients.length - clientsToBreakEven;
   const maxChurnBeforeLoss = activeClients.length > 0 ? ((profitBuffer / activeClients.length) * 100).toFixed(1) : 0;
 
   const revenueNeeded_INR = profitGoal + totalExpenses_INR;
   const revenueNeeded_USD = revenueNeeded_INR / exchangeRate;
-  const clientsNeeded = avgClientValueAfterTax > 0 ? Math.ceil(revenueNeeded_USD / avgClientValueAfterTax) : 0;
+  const clientsNeeded = avgClientValue > 0 ? Math.ceil(revenueNeeded_USD / avgClientValue) : 0;
   const gap = clientsNeeded - activeClients.length;
   const monthsAt2 = gap > 0 ? Math.ceil(gap / 2) : 0;
   const monthsAt3 = gap > 0 ? Math.ceil(gap / 3) : 0;
@@ -57,8 +54,8 @@ export default function Forecast() {
   const insights = [];
   insights.push(`Your top 3 clients generate ${top3Revenue.toFixed(1)}% of revenue. Consider risk mitigation.`);
   if (profitBuffer > 0) insights.push(`You're profitable with a ${profitBuffer}-client safety buffer above break-even.`);
-  if (gap > 0) insights.push(`To reach \u20B92L profit goal, add ${gap} more clients or increase prices by ${avgClientValueAfterTax > 0 ? (((revenueNeeded_USD - totalMRR_afterTax) / totalMRR_afterTax) * 100).toFixed(0) : 0}%.`);
-  insights.push(`At 10% churn, you'll lose ${formatUSD(totalMRR_afterTax * 0.10)}/month - ${Math.round(activeClients.length * 0.10)} clients - within 12 months.`);
+  if (gap > 0) insights.push(`To reach \u20B92L profit goal, add ${gap} more clients or increase prices by ${avgClientValue > 0 ? (((revenueNeeded_USD - totalMRR) / totalMRR) * 100).toFixed(0) : 0}%.`);
+  insights.push(`At 10% churn, you'll lose ${formatUSD(totalMRR * 0.10)}/month - ${Math.round(activeClients.length * 0.10)} clients - within 12 months.`);
   if (contributions[0]) insights.push(`Your oldest client has been with you ${contributions[contributions.length - 1]?.tenure?.text || '?'} - consider a renewal conversation.`);
 
   const CustomTooltip = ({ active, payload, label }) => {
@@ -81,8 +78,8 @@ export default function Forecast() {
       </div>
 
       <div className="stats-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <div className="card stat-card"><div className="stat-label">Current MRR (after tax)</div><div className="stat-value">{formatUSD(totalMRR_afterTax)}</div><div className="stat-sub">{formatINR(convertToINR(totalMRR_afterTax))} {taxRate > 0 && <span className="text-xs text-muted">(gross: {formatUSD(totalMRR)})</span>}</div></div>
-        <div className="card stat-card"><div className="stat-label">Projected ARR (after tax)</div><div className="stat-value">{formatUSD(projectedARR)}</div><div className="stat-sub">{formatINR(convertToINR(projectedARR))} {taxRate > 0 && <span className="text-xs text-muted">(gross: {formatUSD(totalMRR * 12)})</span>}</div></div>
+        <div className="card stat-card"><div className="stat-label">Current Gross MRR</div><div className="stat-value">{formatUSD(totalMRR)}</div><div className="stat-sub">{formatINR(convertToINR(totalMRR))}</div></div>
+        <div className="card stat-card"><div className="stat-label">Projected Gross ARR</div><div className="stat-value">{formatUSD(projectedARR)}</div><div className="stat-sub">{formatINR(convertToINR(projectedARR))}</div></div>
       </div>
 
       <div className="card">
@@ -121,7 +118,7 @@ export default function Forecast() {
             <Line type="monotone" dataKey="Custom" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, strokeWidth: 0 }} />
           </LineChart>
         </ResponsiveContainer>
-        <p className="text-sm text-body mt-4">At {churnSlider}% monthly churn, MRR (after tax) drops from {formatUSD(totalMRR_afterTax)} to <strong style={{ color: 'var(--text-heading)' }}>{formatUSD(scenarios[11]?.Custom || 0)}</strong> in 12 months.</p>
+        <p className="text-sm text-body mt-4">At {churnSlider}% monthly churn, MRR drops from {formatUSD(totalMRR)} to <strong style={{ color: 'var(--text-heading)' }}>{formatUSD(scenarios[11]?.Custom || 0)}</strong> in 12 months.</p>
       </div>
 
       <div className="pnl-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -140,7 +137,7 @@ export default function Forecast() {
         <div className="card pnl-section">
           <h3 className="pnl-section-title"><Target size={16} /> Growth Metrics</h3>
           <div className="pnl-rows">
-            <div className="pnl-row"><span>Current MRR (after tax)</span><span className="font-semibold">{formatUSD(totalMRR_afterTax)}</span></div>
+            <div className="pnl-row"><span>Current Gross MRR</span><span className="font-semibold">{formatUSD(totalMRR)}</span></div>
             <div className="pnl-row"><span>Profit Goal</span><span className="font-semibold">{formatINR(profitGoal)}/mo</span></div>
             <div className="pnl-row"><span>Revenue Needed</span><span className="font-semibold">{formatINR(revenueNeeded_INR)}</span></div>
             <div className="pnl-row"><span>Clients Needed</span><span className="font-semibold">{clientsNeeded}</span></div>

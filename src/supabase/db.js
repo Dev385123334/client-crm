@@ -323,6 +323,38 @@ export async function deleteSheetConnection(userId, sheetType) {
   await supabase.from('sheet_connections').delete().eq('user_id', userId).eq('sheet_type', sheetType);
 }
 
+export async function loadBankDeposits() {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.from('bank_deposits').select('*').order('date', { ascending: false });
+  if (error || !data) return null;
+  return data.map(row => ({
+    id: row.id,
+    date: row.date,
+    inrAmount: Number(row.inr_amount),
+    note: row.note || null,
+    createdAt: row.created_at
+  }));
+}
+
+export async function saveBankDeposits(deposits) {
+  if (!isSupabaseConfigured() || deposits.length === 0) return;
+  const rows = deposits.map(d => ({
+    id: d.id,
+    date: d.date,
+    inr_amount: d.inrAmount,
+    note: d.note || null,
+    updated_at: new Date().toISOString()
+  }));
+  const { error } = await supabase.from('bank_deposits').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  if (error) throw new Error(`Failed to save bank deposits to DB: ${error.message}`);
+}
+
+export async function deleteBankDepositFromDB(id) {
+  if (!isSupabaseConfigured()) return;
+  const { error } = await supabase.from('bank_deposits').delete().eq('id', id);
+  if (error) throw new Error(`Failed to delete bank deposit from DB: ${error.message}`);
+}
+
 export async function migrateFromLocalStorage() {
   if (!isSupabaseConfigured()) return false;
   const loadLS = (key, def) => {
