@@ -329,6 +329,7 @@ export async function loadBankDeposits() {
   if (!isSupabaseConfigured()) return null;
   const { data, error } = await supabase.from('bank_deposits').select('*').order('date', { ascending: false });
   if (error || !data) return null;
+  if (data.length === 0) return null;
   return data.map(row => ({
     id: row.id,
     date: row.date,

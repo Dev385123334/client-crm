@@ -196,7 +196,10 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!isSupabaseConfigured() || authLoading) return;
-    if (!user) return;
+    if (!user) {
+      setDataReady(true);
+      return;
+    }
 
     async function loadSupabaseData() {
       try {
