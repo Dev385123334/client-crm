@@ -12,7 +12,7 @@ import {
   deleteExpensesFromDB,
   deleteMonthlyRecords,
   loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
-  insertAuditLog, loadAuditLogs,
+  insertAuditLog, loadAuditLogs, deleteAuditLogs,
   loadSheetConnections, saveSheetConnection,
   loadBankDeposits, saveBankDeposits, deleteBankDepositFromDB
 } from '../supabase/db';
@@ -102,7 +102,20 @@ function cleanupExpiredTrash(records) {
   return records;
 }
 
-
+function filterLogsOlderThan(logs, days) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const filtered = [];
+  const oldIds = [];
+  for (const log of logs) {
+    if (new Date(log.created_at) < cutoff) {
+      oldIds.push(log.id);
+    } else {
+      filtered.push(log);
+    }
+  }
+  return { filtered, oldIds };
+}
 
 function loadFromLS(key, defaultData) {
   try {
@@ -135,6 +148,7 @@ export const AppProvider = ({ children }) => {
   const [team, setTeam] = useState([]);
   const [syncLogs, setSyncLogs] = useState([]);
   const [bankDeposits, setBankDeposits] = useState(() => loadFromLS('profitpilot_bankDeposits', []));
+  const [pendingWithdrawal, setPendingWithdrawal] = useState(() => loadFromLS('profitpilot_pendingWithdrawal', 0));
   const [assignments, setAssignments] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
 
@@ -154,6 +168,7 @@ export const AppProvider = ({ children }) => {
     setExchangeRate(loadFromLS('profitpilot_exchangeRate', 83));
     setProfitGoal(loadFromLS('profitpilot_profitGoal', 200000));
     setCurrencyView(loadFromLS('profitpilot_currencyView', 'USD'));
+    setPendingWithdrawal(loadFromLS('profitpilot_pendingWithdrawal', 0));
 
     const saved = loadFromLS('profitpilot_monthlyRecords', null);
     if (saved) {
@@ -166,6 +181,10 @@ export const AppProvider = ({ children }) => {
     setTeam(loadFromLS('profitpilot_team', []));
     setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
     setAssignments(loadFromLS('profitpilot_assignments', []));
+
+    const localAuditLogs = loadFromLS('profitpilot_auditLogs', []);
+    const { filtered } = filterLogsOlderThan(localAuditLogs, 15);
+    setAuditLogs(filtered);
   }
 
   useEffect(() => {
@@ -195,6 +214,7 @@ export const AppProvider = ({ children }) => {
           setExchangeRate(settings.exchangeRate);
           setProfitGoal(settings.profitGoal);
           setCurrencyView(settings.currencyView);
+          if (settings.pendingWithdrawal !== undefined) setPendingWithdrawal(settings.pendingWithdrawal);
         }
 
         if (deposits) {
@@ -229,7 +249,13 @@ export const AppProvider = ({ children }) => {
         if (asgn) setAssignments(asgn);
 
         const auditData = await loadAuditLogs();
-        if (auditData) setAuditLogs(auditData);
+        if (auditData) {
+          const { filtered, oldIds } = filterLogsOlderThan(auditData, 15);
+          if (oldIds.length > 0) {
+            deleteAuditLogs(oldIds).catch(() => {});
+          }
+          setAuditLogs(filtered);
+        }
 
         const sheets = await loadSheetConnections(user.id);
         if (sheets) {
@@ -258,14 +284,16 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
+    localStorage.setItem('profitpilot_exchangeRate', JSON.stringify(exchangeRate));
+    localStorage.setItem('profitpilot_profitGoal', JSON.stringify(profitGoal));
+    localStorage.setItem('profitpilot_currencyView', JSON.stringify(currencyView));
+    localStorage.setItem('profitpilot_pendingWithdrawal', JSON.stringify(pendingWithdrawal));
     if (isSupabaseConfigured()) {
-      saveSettings(exchangeRate, profitGoal, currencyView);
-    } else {
-      localStorage.setItem('profitpilot_exchangeRate', JSON.stringify(exchangeRate));
-      localStorage.setItem('profitpilot_profitGoal', JSON.stringify(profitGoal));
-      localStorage.setItem('profitpilot_currencyView', JSON.stringify(currencyView));
+      saveSettings(exchangeRate, profitGoal, currencyView, pendingWithdrawal).catch(err => {
+        console.error('Supabase save settings failed (data preserved in localStorage):', err.message);
+      });
     }
-  }, [dataReady, exchangeRate, profitGoal, currencyView]);
+  }, [dataReady, exchangeRate, profitGoal, currencyView, pendingWithdrawal]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -314,6 +342,15 @@ export const AppProvider = ({ children }) => {
     if (!dataReady) return;
     localStorage.setItem('profitpilot_assignments', JSON.stringify(assignments));
   }, [dataReady, assignments]);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    const { filtered } = filterLogsOlderThan(auditLogs, 15);
+    if (filtered.length !== auditLogs.length) {
+      setAuditLogs(filtered);
+    }
+    localStorage.setItem('profitpilot_auditLogs', JSON.stringify(filtered));
+  }, [dataReady, auditLogs]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -711,6 +748,7 @@ export const AppProvider = ({ children }) => {
       bankDeposits, setBankDeposits,
       addBankDeposit, updateBankDeposit, deleteBankDeposit,
       getBankDepositsForMonth,
+      pendingWithdrawal, setPendingWithdrawal,
       convertToINR, formatUSD, formatINR,
       assignments, saveAssignments, deleteAssignment,
       auditLogs, setAuditLogs, logAction, refreshAuditLogs,

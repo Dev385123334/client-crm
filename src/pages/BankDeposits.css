@@ -8,6 +8,92 @@
   align-self: flex-start;
 }
 
+/* ── Stats Row ── */
+.bd-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .bd-stats-row { grid-template-columns: 1fr; }
+}
+
+.bd-stat-card {
+  padding: 16px 20px;
+}
+
+.bd-stat-card--primary {
+  background: var(--success-bg);
+  border-color: var(--success);
+}
+
+.bd-stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-label);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.bd-stat-card--primary .bd-stat-label {
+  color: var(--success);
+}
+
+.bd-stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-heading);
+  line-height: 1.3;
+}
+
+.bd-stat-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.bd-edit-link {
+  background: none;
+  border: none;
+  color: var(--info);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  font-family: var(--font);
+}
+
+.bd-edit-link:hover {
+  color: var(--accent-hover);
+}
+
+.bd-pending-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.bd-pending-prefix {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.bd-pending-input {
+  width: 120px;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  padding: 6px 10px !important;
+}
+
+.bd-pending-edit .btn-icon-sm {
+  width: 28px;
+  height: 28px;
+}
+
 /* ── Entry Row ── */
 .deposit-entry-row {
   display: flex;

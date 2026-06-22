@@ -27,7 +27,10 @@ function getMonthKey(dateStr) {
 export default function BankDeposits() {
   const {
     bankDeposits, addBankDeposit, updateBankDeposit, deleteBankDeposit,
-    formatINR
+    getBankDepositsForMonth,
+    monthlyRecords, currentMonth, currentYear,
+    formatUSD, formatINR,
+    pendingWithdrawal, setPendingWithdrawal
   } = useContext(AppContext);
 
   const [showForm, setShowForm] = useState(false);
@@ -46,6 +49,9 @@ export default function BankDeposits() {
   const [editError, setEditError] = useState(null);
 
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const [editingPending, setEditingPending] = useState(false);
+  const [pendingValue, setPendingValue] = useState('');
 
   useEffect(() => {
     if (showForm && amountRef.current) {
@@ -152,6 +158,34 @@ export default function BankDeposits() {
     }
   };
 
+  const startEditPending = () => {
+    setPendingValue(String(pendingWithdrawal));
+    setEditingPending(true);
+  };
+
+  const savePending = () => {
+    const val = parseFloat(pendingValue);
+    if (!isNaN(val) && val >= 0) {
+      setPendingWithdrawal(val);
+    }
+    setEditingPending(false);
+  };
+
+  const handlePendingKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      savePending();
+    }
+    if (e.key === 'Escape') {
+      setEditingPending(false);
+    }
+  };
+
+  const monthKey = `${currentYear}-${currentMonth}`;
+  const monthRecords = (monthlyRecords[monthKey] || []).filter(r => !r.isDeleted);
+  const invoicedThisMonth = monthRecords.reduce((s, r) => s + ((r.paymentReceived || 0) + (r.upsellAmount || 0) - (r.downsellAmount || 0) - (r.refundAmount || 0) - (r.chargebackAmount || 0)), 0);
+  const actualInrThisMonth = getBankDepositsForMonth(currentMonth, currentYear).reduce((sum, d) => sum + d.inrAmount, 0);
+
   const grouped = {};
   for (const d of bankDeposits) {
     const key = getMonthKey(d.date);
@@ -165,12 +199,60 @@ export default function BankDeposits() {
     monthTotals[key] = deposits.reduce((sum, d) => sum + d.inrAmount, 0);
   }
 
+  const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const curMonthName = monthNames[parseInt(currentMonth)];
+
   return (
     <div className="bank-deposits-page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Bank Deposit Log</h1>
           <p className="page-subtitle">Record actual INR amounts credited from Payoneer withdrawals.</p>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div className="bd-stats-row">
+        <div className="card bd-stat-card bd-stat-card--primary">
+          <div className="bd-stat-label">Actual INR Received This Month</div>
+          <div className="bd-stat-value">{formatINR(actualInrThisMonth)}</div>
+          <div className="bd-stat-sub">From Bank Deposit Log — confirmed bank amount.</div>
+        </div>
+        <div className="card bd-stat-card">
+          <div className="bd-stat-label">Invoiced This Month (USD)</div>
+          <div className="bd-stat-value">{formatUSD(invoicedThisMonth)}</div>
+          <div className="bd-stat-sub">Gross amount — before processing fees and conversion.</div>
+        </div>
+        <div className="card bd-stat-card">
+          <div className="bd-stat-label">Pending Withdrawal (USD)</div>
+          {editingPending ? (
+            <div className="bd-pending-edit">
+              <span className="bd-pending-prefix">$</span>
+              <input
+                type="number"
+                step="0.01"
+                className="input-field bd-pending-input"
+                value={pendingValue}
+                onChange={e => setPendingValue(e.target.value)}
+                onKeyDown={handlePendingKeyDown}
+                autoFocus
+              />
+              <button className="btn-icon btn-icon-sm" onClick={savePending} title="Save">
+                <Check size={14} />
+              </button>
+              <button className="btn-icon btn-icon-sm" onClick={() => setEditingPending(false)} title="Cancel">
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="bd-stat-value">{formatUSD(pendingWithdrawal)}</div>
+              <div className="bd-stat-sub">
+                Current Payoneer balance —{' '}
+                <button className="bd-edit-link" onClick={startEditPending}>update</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

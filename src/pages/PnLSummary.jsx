@@ -23,10 +23,11 @@ function getPreviousMonths(count, currentMonth, currentYear) {
 
 export default function PnLSummary() {
   const {
-    currentMonthRecords, currentMonthActive,
+    currentMonthActive,
     expenses, currentMonth, currentYear,
     exchangeRate, convertToINR, formatUSD, formatINR, profitGoal,
-    bankDeposits, monthlyRecords
+    bankDeposits, monthlyRecords, getBankDepositsForMonth,
+    pendingWithdrawal
   } = useContext(AppContext);
 
   const curMonthName = MONTH_LABELS[parseInt(currentMonth)];
@@ -36,11 +37,8 @@ export default function PnLSummary() {
   if (nextMonthNum > 12) { nextMonthNum = 1; nextYearNum++; }
   const nextMonthName = MONTH_LABELS[nextMonthNum];
 
-  const totalReceived = currentMonthRecords.reduce((sum, r) => sum + (r.paymentReceived || 0), 0);
-  const totalRefunds = currentMonthRecords.reduce((sum, r) => sum + (r.refundAmount || 0), 0);
-  const totalChargebacks = currentMonthRecords.reduce((sum, r) => sum + (r.chargebackAmount || 0), 0);
-  const netCashUSD = totalReceived - totalRefunds - totalChargebacks;
-  const netCashINR = convertToINR(netCashUSD);
+  const actualInrReceived = getBankDepositsForMonth(currentMonth, currentYear)
+    .reduce((sum, d) => sum + d.inrAmount, 0);
 
   const nextMonthMRR_USD = currentMonthActive.reduce((s, r) => s + r.monthlyPrice, 0);
   const nextMonthMRR_INR = convertToINR(nextMonthMRR_USD);
@@ -49,15 +47,15 @@ export default function PnLSummary() {
   const totalExpensesINR = monthExpenses.reduce((s, e) => s + e.amount, 0);
   const totalExpensesUSD = totalExpensesINR / exchangeRate;
 
-  const grossProfitUSD = netCashUSD - totalExpensesUSD;
-  const grossProfitINR = netCashINR - totalExpensesINR;
-  const isProfitable = grossProfitUSD >= 0;
+  const pendingWithdrawalINR = convertToINR(pendingWithdrawal);
+  const totalEffectiveRevenueINR = actualInrReceived + pendingWithdrawalINR;
 
-  const expectedProfitUSD = nextMonthMRR_USD - totalExpensesUSD;
+  const grossProfitINR = totalEffectiveRevenueINR - totalExpensesINR;
+  const isProfitable = grossProfitINR >= 0;
+
   const expectedProfitINR = nextMonthMRR_INR - totalExpensesINR;
 
   const goalProgress = Math.min((grossProfitINR / profitGoal) * 100, 100);
-  const paidClientCount = currentMonthRecords.filter(r => r.paymentReceived > 0).length;
 
   const reconciliations = useMemo(() => {
     const months = getPreviousMonths(12, currentMonth, currentYear);
@@ -75,7 +73,7 @@ export default function PnLSummary() {
       depositsByMonth[key] = (depositsByMonth[key] || 0) + d.inrAmount;
     }
 
-    return months.map(({ year, month }, idx) => {
+    return months.map(({ year, month }) => {
       const key = getMonthKey(year, month);
       const label = `${MONTH_LABELS[parseInt(month)]} ${year}`;
       const invoiced = invoicedByMonth[key] || 0;
@@ -86,7 +84,7 @@ export default function PnLSummary() {
         impliedRate = deposits / invoiced;
       }
 
-      return { key, label, invoiced, deposits, impliedRate, idx };
+      return { key, label, invoiced, deposits, impliedRate };
     }).filter(m => m.invoiced > 0 || m.deposits > 0).reverse();
   }, [monthlyRecords, bankDeposits, currentMonth, currentYear]);
 
@@ -118,42 +116,27 @@ export default function PnLSummary() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Financial Summary</h1>
-          <p className="page-subtitle">{curMonthName} {currentYear} &mdash; Invoiced vs. Bank Deposits</p>
+          <p className="page-subtitle">{curMonthName} {currentYear} &mdash; Actual INR Received</p>
         </div>
       </div>
 
       <div className="pnl-grid-new">
 
-        {/* Invoiced Box */}
+        {/* Actual INR Received Box */}
         <div className="card pnl-box">
           <div className="pnl-box-header">
-            <h3>INVOICED THIS MONTH (USD)</h3>
+            <h3>ACTUAL INR RECEIVED THIS MONTH</h3>
             <span className="badge badge-success">Actual</span>
           </div>
           <div className="pnl-box-content">
-            <div className="pnl-line">
-              <span className="text-muted">Total Payments Received:</span>
-              <span className="font-semibold">{formatUSD(totalReceived)}</span>
-            </div>
-            <div className="pnl-line text-sm text-muted">
-              <span>({paidClientCount} clients paid)</span>
-            </div>
-
-            <div className="pnl-line mt-2">
-              <span className="text-muted">Less: Refunds:</span>
-              <span className="text-danger">-{formatUSD(totalRefunds)}</span>
-            </div>
-            <div className="pnl-line border-bottom">
-              <span className="text-muted">Less: Chargebacks:</span>
-              <span className="text-danger">-{formatUSD(totalChargebacks)}</span>
-            </div>
-
-            <div className="pnl-line total-line mt-3">
-              <span className="font-bold text-heading">NET INVOICED ({curMonthName}):</span>
+            <div className="pnl-line total-line">
+              <span className="font-bold text-heading">Total Bank Deposits ({curMonthName}):</span>
               <div className="text-right">
-                <span className="font-bold text-success text-lg">{formatUSD(netCashUSD)}</span>
-                <div className="text-xs text-muted">&asymp; {formatINR(netCashINR)}</div>
+                <span className="font-bold text-success text-lg">{formatINR(actualInrReceived)}</span>
               </div>
+            </div>
+            <div className="text-sm text-muted mt-2">
+              From Bank Deposit Log — confirmed bank amount, not estimated.
             </div>
           </div>
         </div>
@@ -197,14 +180,20 @@ export default function PnLSummary() {
           <div>
             <h4 className="statement-section-title">INCOME</h4>
             <div className="statement-row">
-              <span>Gross Revenue:</span>
-              <span className="font-semibold">{formatUSD(netCashUSD)}</span>
+              <span>Actual INR Received:</span>
+              <span className="font-semibold text-success">{formatINR(actualInrReceived)}</span>
+            </div>
+            <div className="statement-row">
+              <span>Add: Pending Withdrawal:</span>
+              <div className="text-right">
+                <span className="font-semibold">{formatINR(pendingWithdrawalINR)}</span>
+                <div className="text-xs text-muted">{formatUSD(pendingWithdrawal)} at current rate</div>
+              </div>
             </div>
             <div className="statement-row total-line" style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 4 }}>
               <span className="font-bold text-heading">Net Revenue:</span>
               <div className="text-right">
-                <span className="font-bold text-success">{formatUSD(netCashUSD)}</span>
-                <div className="text-xs text-muted">&asymp; {formatINR(netCashINR)}</div>
+                <span className="font-bold text-success">{formatINR(totalEffectiveRevenueINR)}</span>
               </div>
             </div>
           </div>
@@ -226,12 +215,11 @@ export default function PnLSummary() {
               <span>Gross Profit ({curMonthName}):</span>
               <div className="text-right">
                 <span className={`font-bold ${isProfitable ? 'text-success' : 'text-danger'}`}>
-                  {isProfitable ? '+' : ''}{formatUSD(grossProfitUSD)}
+                  {isProfitable ? '+' : ''}{formatINR(grossProfitINR)}
                 </span>
-                <div className="text-xs text-muted">&asymp; {formatINR(grossProfitINR)}</div>
               </div>
             </div>
-            <div className="text-xs text-muted mt-1">Calculation: {formatUSD(netCashUSD)} ({formatINR(netCashINR)}) &minus; {formatUSD(totalExpensesUSD)} ({formatINR(totalExpensesINR)})</div>
+            <div className="text-xs text-muted mt-1">Calculation: ({formatINR(actualInrReceived)} + {formatINR(pendingWithdrawalINR)}) &minus; {formatINR(totalExpensesINR)}</div>
 
             <div className="forecast-box mt-4">
               <h5 className="font-semibold mb-2 flex items-center gap-1"><AlertCircle size={14}/> Forecast for {nextMonthName}</h5>
@@ -239,15 +227,14 @@ export default function PnLSummary() {
                 <div className="flex justify-between mb-1">
                   <span>Expected Income:</span>
                   <div className="text-right">
-                    <span>{formatUSD(nextMonthMRR_USD)}</span>
-                    <div className="text-xs text-muted">&asymp; {formatINR(nextMonthMRR_INR)}</div>
+                    <span>{formatINR(nextMonthMRR_INR)}</span>
+                    <div className="text-xs text-muted">{formatUSD(nextMonthMRR_USD)} at current rate</div>
                   </div>
                 </div>
-                <div className="flex justify-between font-semibold" style={{ color: expectedProfitUSD >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                <div className="flex justify-between font-semibold" style={{ color: expectedProfitINR >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                   <span>Expected Profit:</span>
                   <div className="text-right">
-                    <span>{expectedProfitUSD >= 0 ? '+' : ''}{formatUSD(expectedProfitUSD)}</span>
-                    <div className="text-xs text-muted">&asymp; {formatINR(expectedProfitINR)}</div>
+                    <span>{expectedProfitINR >= 0 ? '+' : ''}{formatINR(expectedProfitINR)}</span>
                   </div>
                 </div>
               </div>

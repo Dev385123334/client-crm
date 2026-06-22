@@ -9,6 +9,7 @@ create table if not exists settings (
   exchange_rate numeric not null default 83,
   profit_goal numeric not null default 200000,
   currency_view text not null default 'USD',
+  pending_withdrawal numeric not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

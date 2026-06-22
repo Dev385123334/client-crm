@@ -67,17 +67,19 @@ export async function loadSettings() {
   return {
     exchangeRate: Number(data.exchange_rate) || 83,
     profitGoal: Number(data.profit_goal) || 200000,
-    currencyView: data.currency_view || 'USD'
+    currencyView: data.currency_view || 'USD',
+    pendingWithdrawal: data.pending_withdrawal != null ? Number(data.pending_withdrawal) : undefined
   };
 }
 
-export async function saveSettings(exchangeRate, profitGoal, currencyView) {
+export async function saveSettings(exchangeRate, profitGoal, currencyView, pendingWithdrawal) {
   if (!isSupabaseConfigured()) return;
   const { data: existing } = await supabase.from('settings').select('id').limit(1).maybeSingle();
   const payload = {
     exchange_rate: exchangeRate,
     profit_goal: profitGoal,
     currency_view: currencyView,
+    pending_withdrawal: pendingWithdrawal || 0,
     updated_at: new Date().toISOString()
   };
   if (existing) {
@@ -381,7 +383,8 @@ export async function migrateFromLocalStorage() {
   const exchangeRate = loadLS('profitpilot_exchangeRate', 83);
   const profitGoal = loadLS('profitpilot_profitGoal', 200000);
   const currencyView = loadLS('profitpilot_currencyView', 'USD');
-  await saveSettings(exchangeRate, profitGoal, currencyView);
+  const pendingWithdrawal = loadLS('profitpilot_pendingWithdrawal', 0);
+  await saveSettings(exchangeRate, profitGoal, currencyView, pendingWithdrawal);
 
   const expenses = loadLS('profitpilot_expenses', null);
   if (expenses && expenses.length > 0) await saveExpenses(expenses);
