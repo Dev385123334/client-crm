@@ -1,6 +1,6 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
-import { TrendingUp, Target, AlertCircle } from 'lucide-react';
+import { TrendingUp, Target, AlertCircle, BarChart3 } from 'lucide-react';
 import './PnLSummary.css';
 
 const MONTH_LABELS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -110,6 +110,59 @@ export default function PnLSummary() {
     }
     return result;
   }, [reconciliations]);
+
+  const currentKey = getMonthKey(currentYear, currentMonth);
+
+  const cumulativeData = useMemo(() => {
+    const depositsByMonth = {};
+    for (const d of bankDeposits) {
+      const key = getMonthKey(new Date(d.date).getFullYear(), new Date(d.date).getMonth() + 1);
+      depositsByMonth[key] = (depositsByMonth[key] || 0) + d.inrAmount;
+    }
+
+    const expensesByMonth = {};
+    for (const e of expenses) {
+      const key = `${e.year}-${e.month}`;
+      expensesByMonth[key] = (expensesByMonth[key] || 0) + e.amount;
+    }
+
+    const allMonths = new Set([...Object.keys(depositsByMonth), ...Object.keys(expensesByMonth)]);
+    const sortedMonths = Array.from(allMonths)
+      .filter(k => k <= currentKey)
+      .sort();
+
+    let runningTotal = 0;
+    const breakdown = [];
+    for (const key of sortedMonths) {
+      const [year, month] = key.split('-');
+      const isCurrent = key === currentKey;
+      const deposits = depositsByMonth[key] || 0;
+      const expenses = expensesByMonth[key] || 0;
+      const pendingForMonth = isCurrent ? pendingWithdrawalINR : 0;
+      const revenue = deposits + pendingForMonth;
+      const profit = revenue - expenses;
+      if (deposits === 0 && expenses === 0) continue;
+      runningTotal += profit;
+      breakdown.push({
+        key,
+        label: `${MONTH_LABELS[parseInt(month)]} ${year}`,
+        deposits,
+        expenses,
+        profit,
+        runningTotal
+      });
+    }
+
+    return { breakdown, cumulativeTotal: runningTotal };
+  }, [bankDeposits, expenses, pendingWithdrawalINR, currentKey]);
+
+  const isCumulativeProfitable = cumulativeData.cumulativeTotal >= 0;
+  const [showAllCumulative, setShowAllCumulative] = useState(false);
+  const CUMULATIVE_LIMIT = 5;
+  const hasMoreCumulative = cumulativeData.breakdown.length > CUMULATIVE_LIMIT;
+  const displayedCumulative = showAllCumulative
+    ? cumulativeData.breakdown
+    : cumulativeData.breakdown.slice(0, CUMULATIVE_LIMIT);
 
   return (
     <div className="pnl-page">
@@ -302,6 +355,66 @@ export default function PnLSummary() {
         <p className="reconciliation-disclaimer">
           Single-month figures may include carryover from the previous month due to how Payoneer pools withdrawals. Use the 3-month rolling average for an accurate trend.
         </p>
+      </div>
+
+      {/* All-Time Profit & Loss */}
+      <div className="card mt-4 pnl-statement">
+        <h3 className="mb-4 flex items-center gap-2"><BarChart3 size={18} /> All-Time Profit & Loss</h3>
+
+        {cumulativeData.breakdown.length === 0 ? (
+          <p className="text-sm text-muted">No data yet. Start recording bank deposits and expenses to see your all-time profit or loss.</p>
+        ) : (
+          <>
+            <div className="cumulative-total-display">
+              <div className={`cumulative-total-value ${isCumulativeProfitable ? 'text-success' : 'text-danger'}`}>
+                {isCumulativeProfitable ? '+' : ''}{formatINR(cumulativeData.cumulativeTotal)}
+              </div>
+              <div className="cumulative-total-label">
+                {isCumulativeProfitable ? 'Total Profit to Date' : 'Total Loss to Date'}
+              </div>
+            </div>
+
+            <div className={`reconciliation-table-wrap ${hasMoreCumulative && !showAllCumulative ? 'cumulative-fade-wrap' : ''}`}>
+              <table className="reconciliation-table">
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th className="text-right">Deposits</th>
+                    <th className="text-right">Expenses</th>
+                    <th className="text-right">Gross Profit</th>
+                    <th className="text-right">Running Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedCumulative.map(m => (
+                    <tr key={m.key}>
+                      <td className="font-semibold">{m.label}</td>
+                      <td className="text-right">{formatINR(m.deposits)}</td>
+                      <td className="text-right">{formatINR(m.expenses)}</td>
+                      <td className={`text-right font-semibold ${m.profit >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {m.profit >= 0 ? '+' : ''}{formatINR(m.profit)}
+                      </td>
+                      <td className={`text-right font-semibold ${m.runningTotal >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {formatINR(m.runningTotal)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {hasMoreCumulative && !showAllCumulative && (
+                <div className="cumulative-fade-overlay">
+                  <button className="btn btn-secondary" onClick={() => setShowAllCumulative(true)}>
+                    Show All ({cumulativeData.breakdown.length} months)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <p className="reconciliation-disclaimer">
+              Past months use only actual bank deposits. The current month also includes pending withdrawal (if set).
+            </p>
+          </>
+        )}
       </div>
 
     </div>

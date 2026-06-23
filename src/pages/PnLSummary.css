@@ -168,3 +168,52 @@
   border: 1px solid var(--border-light);
   margin: 0;
 }
+
+/* ── All-Time P&L Cumulative Display ── */
+.cumulative-total-display {
+  text-align: center;
+  padding: 32px 20px;
+  margin-bottom: 24px;
+  background: #f8fafc;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+
+.cumulative-total-value {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+
+.cumulative-total-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-label);
+  letter-spacing: 0.03em;
+}
+
+/* ── Cumulative Table Fade Effect ── */
+.cumulative-fade-wrap {
+  position: relative;
+  max-height: 340px;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+.cumulative-fade-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 60px 20px 20px;
+  pointer-events: auto;
+  background: linear-gradient(transparent 0%, var(--bg-card) 80%);
+}
+
+.cumulative-fade-overlay .btn {
+  min-width: 180px;
+}
