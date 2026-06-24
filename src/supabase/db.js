@@ -253,7 +253,7 @@ export async function deleteClientPmAssignment(id) {
 
 export async function insertAuditLog({ userId, userEmail, actionType, entityType, entityId, entityName, details }) {
   if (!isSupabaseConfigured()) return null;
-  const { data, error } = await supabase.from('audit_logs').insert({
+  const { error } = await supabase.from('audit_logs').insert({
     user_id: userId,
     user_email: userEmail,
     action_type: actionType,
@@ -261,9 +261,9 @@ export async function insertAuditLog({ userId, userEmail, actionType, entityType
     entity_id: entityId || '',
     entity_name: entityName || '',
     details: details || {}
-  }).select().single();
+  });
   if (error) { console.error('insertAuditLog error:', error); return null; }
-  return data;
+  return true;
 }
 
 export async function loadAuditLogs() {

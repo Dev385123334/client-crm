@@ -658,13 +658,10 @@ export const AppProvider = ({ children }) => {
     };
     setAuditLogs(prev => [entry, ...prev]);
     if (isSupabaseConfigured()) {
-      const saved = await insertAuditLog({
+      await insertAuditLog({
         userId: user.id, userEmail: user.email || '',
         actionType, entityType, entityId, entityName, details
       });
-      if (saved) {
-        setAuditLogs(prev => prev.map(e => e.id === tempId ? saved : e));
-      }
     }
   }, []);
 
