@@ -370,6 +370,80 @@
   height: 28px;
 }
 
+/* ── Monthly Totals ── */
+.bd-monthly-totals {
+  padding: 0;
+  overflow: hidden;
+}
+
+.bd-monthly-totals-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.bd-monthly-totals-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0;
+}
+
+.bd-monthly-totals-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.bd-monthly-totals-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.bd-monthly-totals-row:last-child {
+  border-bottom: none;
+}
+
+.bd-monthly-totals-row:hover {
+  background: #f8fafc;
+}
+
+.bd-monthly-totals-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.bd-monthly-totals-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.bd-monthly-totals-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-top: 2px solid var(--border-light);
+  background: #f8fafc;
+}
+
+.bd-monthly-totals-footer-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-heading);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.bd-monthly-totals-footer-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--success);
+}
+
 /* ── Empty state ── */
 .bank-deposits-page .empty-state {
   margin: 0;

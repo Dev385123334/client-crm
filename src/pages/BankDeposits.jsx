@@ -256,6 +256,29 @@ export default function BankDeposits() {
         </div>
       </div>
 
+      {/* Monthly Totals */}
+      <div className="card bd-monthly-totals">
+        <div className="bd-monthly-totals-header">
+          <h2 className="bd-monthly-totals-title">Monthly Totals</h2>
+        </div>
+        <div className="bd-monthly-totals-list">
+          {sortedGroupKeys.map(key => {
+            const [year, month] = key.split('-');
+            const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+            return (
+              <div key={key} className="bd-monthly-totals-row">
+                <span className="bd-monthly-totals-label">{monthName}</span>
+                <span className="bd-monthly-totals-value">{formatINR(monthTotals[key])}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="bd-monthly-totals-footer">
+          <span className="bd-monthly-totals-footer-label">Grand Total</span>
+          <span className="bd-monthly-totals-footer-value">{formatINR(Object.values(monthTotals).reduce((a, b) => a + b, 0))}</span>
+        </div>
+      </div>
+
       {!showForm ? (
         <button className="btn btn-primary add-deposit-btn" onClick={openForm}>
           <Plus size={16} /> Add Deposit
