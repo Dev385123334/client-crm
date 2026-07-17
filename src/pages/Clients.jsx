@@ -1,8 +1,9 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import { calculateTenure, formatDate, getPaymentStatus, getPaymentAlert, parseGoogleSheetDate, parseUSDAmount, CLIENT_STATUSES, PAYMENT_METHODS, STATUS_NOTES, MONTH_NAMES, getBaseRole, getPmRole, getPmNames, PMS } from '../utils/helpers';
-import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter } from 'lucide-react';
+import { Plus, Upload, ArrowUpDown, Check, X, Search, Mail, Trash2, Edit3, DollarSign, AlertCircle, RotateCcw, Archive, Filter, Clock } from 'lucide-react';
 import FilterBar from '../components/FilterBar/FilterBar';
 import NotificationPanel from '../components/NotificationPanel/NotificationPanel';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,11 +33,14 @@ export default function Clients() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [editRecordId, setEditRecordId] = useState(null);
   const [formErrors, setFormErrors] = useState({});
-  const [sortBy, setSortBy] = useState('onboardingDate');
+  const [sortBy, setSortBy] = useState('paymentStatus');
   const [sortDir, setSortDir] = useState('asc');
   const [filters, setFilters] = useState({ search: '', status: null, dateRange: null, amount: null });
   const [importPreview, setImportPreview] = useState(null);
   const fileInputRef = useRef(null);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeStatusFilter = searchParams.get('status') || 'all';
 
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
@@ -79,6 +83,73 @@ export default function Clients() {
     : currentMonthRecords;
   const activeRecords = records.filter(r => r.status === 'Active');
   const cancelledRecords = records.filter(r => r.status === 'Cancelled');
+
+  const getPaymentInfo = useCallback((record) => {
+    const hasPayment = record.paymentReceived > 0;
+    if (hasPayment) {
+      return {
+        category: 'paid',
+        diffDays: null,
+        label: 'PAID',
+        type: 'success',
+        emoji: '\uD83D\uDFE2',
+        overdueDays: 0
+      };
+    }
+    if (record.status === 'Cancelled') {
+      return {
+        category: 'cancelled',
+        diffDays: null,
+        label: 'CANCELLED',
+        type: 'danger',
+        emoji: '\u274C',
+        overdueDays: 0
+      };
+    }
+    const billingDate = record.billingStartDate || record.onboardingDate;
+    const dueDay = parseInt(billingDate.split('-')[2]) || record.paymentDueDay || 1;
+    const viewMonth = parseInt(currentMonth);
+    const viewYear = parseInt(currentYear);
+    const lastDay = new Date(viewYear, viewMonth, 0).getDate();
+    const dueDayAdjusted = Math.min(dueDay, lastDay);
+    const dueDate = new Date(viewYear, viewMonth - 1, dueDayAdjusted);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    dueDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) {
+      return { category: 'overdue', diffDays, label: `OVERDUE by ${Math.abs(diffDays)} Days`, type: 'danger', emoji: '\uD83D\uDD34', overdueDays: Math.abs(diffDays) };
+    }
+    if (diffDays <= 7) {
+      const label = diffDays === 0 ? 'DUE TODAY' : `Invoice in ${diffDays} Days`;
+      return { category: 'duesoon', diffDays, label, type: 'warning', emoji: diffDays === 0 ? '\uD83D\uDFE0' : '\uD83D\uDFE1', overdueDays: 0 };
+    }
+    return { category: 'other', diffDays, label: `DUE IN ${diffDays} DAYS`, type: 'neutral', emoji: '\u26AA', overdueDays: 0 };
+  }, [currentMonth, currentYear]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = { overdue: 0, duesoon: 0, paid: 0, cancelled: 0 };
+    records.forEach(r => {
+      const info = getPaymentInfo(r);
+      if (info.category && Object.prototype.hasOwnProperty.call(counts, info.category)) {
+        counts[info.category]++;
+      }
+    });
+    return counts;
+  }, [records, getPaymentInfo]);
+
+  const overdueSummary = useMemo(() => {
+    let total = 0;
+    let count = 0;
+    records.forEach(r => {
+      const info = getPaymentInfo(r);
+      if (info.category === 'overdue') {
+        total += r.monthlyPrice;
+        count++;
+      }
+    });
+    return { total, count };
+  }, [records, getPaymentInfo]);
 
   const activeCount = activeRecords.length;
   const totalMRR = activeRecords.reduce((s, r) => s + r.monthlyPrice, 0);
@@ -141,6 +212,10 @@ export default function Clients() {
   };
 
   const sorted = [...records].filter(r => {
+    if (activeStatusFilter !== 'all') {
+      const info = getPaymentInfo(r);
+      if (info.category !== activeStatusFilter) return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase();
       const searchable = [r.businessName, r.email, r.contactPerson, r.phone, r.notes].filter(Boolean).join(' ').toLowerCase();
@@ -157,6 +232,20 @@ export default function Clients() {
     }
     return true;
   }).sort((a, b) => {
+    if (sortBy === 'paymentStatus') {
+      const catA = getPaymentInfo(a).category;
+      const catB = getPaymentInfo(b).category;
+      const order = { overdue: 0, duesoon: 1, paid: 2, other: 3, cancelled: 4 };
+      const oA = order[catA] ?? 99;
+      const oB = order[catB] ?? 99;
+      if (oA !== oB) return oA - oB;
+      if (catA === 'overdue' && catB === 'overdue') {
+        return getPaymentInfo(b).overdueDays - getPaymentInfo(a).overdueDays;
+      }
+      if (catA === 'duesoon' && catB === 'duesoon') {
+        return (getPaymentInfo(a).diffDays ?? 0) - (getPaymentInfo(b).diffDays ?? 0);
+      }
+    }
     let valA, valB;
     if (sortBy === 'onboardingDate') { valA = a.onboardingDate; valB = b.onboardingDate; }
     else if (sortBy === 'monthlyPrice') { valA = a.monthlyPrice; valB = b.monthlyPrice; }
@@ -480,30 +569,43 @@ export default function Clients() {
         </div>
       </div>
 
-      {/* Collect This Week Widget */}
-      {upcomingCollections.length > 0 && (
-        <div className="card" style={{ marginBottom: 20, border: '1px solid #f59e0b', background: '#fffbeb' }}>
-          <h3 className="mb-3 font-semibold flex items-center gap-2" style={{ color: '#b45309' }}>
-            <AlertCircle size={18} /> COLLECT THIS WEEK
-          </h3>
-          <div className="flex flex-col gap-2">
-            {upcomingCollections.map(r => (
-              <div key={r.id} className="flex justify-between items-center p-3 rounded" style={{ background: '#fff', border: '1px solid var(--border-light)' }}>
-                <div>
-                  <span className="font-semibold mr-2 text-heading">{r.businessName}</span>
-                  <span className="text-muted text-sm mr-2">— {formatUSD(r.monthlyPrice)} —</span>
-                  <span className={`text-sm font-semibold ${r.diffDays === 0 ? 'text-warning' : 'text-body'}`}>
-                    {r.diffDays === 0 ? 'Invoice due TODAY' : `Invoice due in ${r.diffDays} day${r.diffDays > 1 ? 's' : ''}`}
-                  </span>
-                </div>
-                <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => markAsPaid(r.id, r.monthlyPrice)}>
-                  <Check size={14} /> Mark as Paid
-                </button>
-              </div>
-            ))}
+      {/* Overdue Summary + Collect This Week */}
+      <div className="overdue-collect-row">
+        {overdueSummary.count > 0 && (
+          <div className="card overdue-summary-card">
+            <div className="overdue-summary-inner">
+              <h3 className="overdue-summary-title">
+                <Clock size={18} /> TOTAL OVERDUE
+              </h3>
+              <div className="overdue-summary-value">{showAmount(overdueSummary.total)}</div>
+              <div className="overdue-summary-sub">Across {overdueSummary.count} client{overdueSummary.count > 1 ? 's' : ''}</div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+        {upcomingCollections.length > 0 && (
+          <div className="card collect-week-card">
+            <h3 className="mb-3 font-semibold flex items-center gap-2" style={{ color: '#b45309' }}>
+              <AlertCircle size={18} /> COLLECT THIS WEEK
+            </h3>
+            <div className="flex flex-col gap-2">
+              {upcomingCollections.map(r => (
+                <div key={r.id} className="flex justify-between items-center p-3 rounded" style={{ background: '#fff', border: '1px solid var(--border-light)' }}>
+                  <div>
+                    <span className="font-semibold mr-2 text-heading">{r.businessName}</span>
+                    <span className="text-muted text-sm mr-2">— {formatUSD(r.monthlyPrice)} —</span>
+                    <span className={`text-sm font-semibold ${r.diffDays === 0 ? 'text-warning' : 'text-body'}`}>
+                      {r.diffDays === 0 ? 'Invoice due TODAY' : `Invoice due in ${r.diffDays} day${r.diffDays > 1 ? 's' : ''}`}
+                    </span>
+                  </div>
+                  <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => markAsPaid(r.id, r.monthlyPrice)}>
+                    <Check size={14} /> Mark as Paid
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <NotificationPanel />
 
@@ -547,40 +649,23 @@ export default function Clients() {
         </div>
       </div>
 
-      {/* Breakdown Row */}
-      <div className="breakdown-row">
-        <div className="card breakdown-card">
-          <h3 className="breakdown-title">Client Age Breakdown</h3>
-          <div className="breakdown-list">
-            {tenureBuckets.map((b, i) => {
-              const counts = [t9plus, t6to9, t3to6, tUnder3][i];
-              const revs = [rev9plus, rev6to9, rev3to6, revUnder3][i];
-              return (
-                <div key={b.key} className="breakdown-item">
-                  <div className="breakdown-left">
-                    <span className="breakdown-label">{b.label}</span>
-                    <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (counts / activeCount) * 100 : 0}%` }}></div></div>
-                  </div>
-                  <span className="breakdown-value">{counts} clients - {formatUSD(revs)}/mo</span>
+      {/* Tenure Breakdown — consolidated */}
+      <div className="card breakdown-card">
+        <h3 className="breakdown-title">Client Age &amp; Revenue by Tenure</h3>
+        <div className="breakdown-list">
+          {tenureBuckets.map((b, i) => {
+            const counts = [t9plus, t6to9, t3to6, tUnder3][i];
+            const revs = [rev9plus, rev6to9, rev3to6, revUnder3][i];
+            return (
+              <div key={b.key} className="breakdown-item">
+                <div className="breakdown-left">
+                  <span className="breakdown-label">{b.label}</span>
+                  <div className="breakdown-bar"><div className="bar-fill" style={{ width: `${activeCount > 0 ? (counts / activeCount) * 100 : 0}%` }}></div></div>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="card breakdown-card">
-          <h3 className="breakdown-title">Revenue by Client Tenure</h3>
-          <div className="revenue-tenure-list">
-            {tenureBuckets.map((b, i) => {
-              const revs = [rev9plus, rev6to9, rev3to6, revUnder3][i];
-              return (
-                <div key={b.key} className="rev-tenure-item">
-                  <span className="rev-tenure-label">{b.label}</span>
-                  <span className="rev-tenure-value">{formatUSD(revs)} ({pctOf(revs, totalMRR)}%)</span>
-                </div>
-              );
-            })}
-          </div>
+                <span className="breakdown-value">{counts} clients — {formatUSD(revs)}/mo ({pctOf(revs, totalMRR)}%)</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -643,6 +728,26 @@ export default function Clients() {
       {/* Filter Bar */}
       <FilterBar records={records} filters={filters} onFiltersChange={setFilters} />
 
+      {/* Status Filter Pills */}
+      <div className="status-filter-pills">
+        {[
+          { key: 'all', label: 'All', color: 'var(--info)' },
+          { key: 'overdue', label: `Overdue (${categoryCounts.overdue})`, color: 'var(--danger)' },
+          { key: 'duesoon', label: `Due Soon (${categoryCounts.duesoon})`, color: 'var(--warning)' },
+          { key: 'paid', label: `Paid (${categoryCounts.paid})`, color: 'var(--success)' },
+          { key: 'cancelled', label: `Cancelled (${categoryCounts.cancelled})`, color: 'var(--text-muted)' },
+        ].filter(p => p.key === 'all' || categoryCounts[p.key] > 0).map(p => (
+          <button
+            key={p.key}
+            className={`status-filter-pill ${activeStatusFilter === p.key ? 'status-filter-pill--active' : ''}`}
+            style={{ '--pill-color': p.color }}
+            onClick={() => setSearchParams(p.key === 'all' ? {} : { status: p.key })}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {/* Bulk Selection Toolbar */}
       {selectedIds.size > 0 && (
         <div className="bulk-toolbar">
@@ -680,7 +785,7 @@ export default function Clients() {
                 <th onClick={() => handleSort('businessName')}>Client Name <ArrowUpDown size={10} /></th>
                 <th>Website</th>
                 <th onClick={() => handleSort('onboardingDate')}>Onboarded <ArrowUpDown size={10} /></th>
-                <th onClick={() => handleSort('billingStartDate')}>Billing <ArrowUpDown size={10} /></th>
+                <th onClick={() => handleSort('paymentDueDay')}>Bill Day <ArrowUpDown size={10} /></th>
                 <th onClick={() => handleSort('tenure')}>Tenure <ArrowUpDown size={10} /></th>
                 <th>Status</th>
                 <th onClick={() => handleSort('monthlyPrice')}>Monthly Price <ArrowUpDown size={10} /></th>
@@ -691,36 +796,11 @@ export default function Clients() {
             <tbody>
               {sorted.map(record => {
                 const tenure = calculateTenure(record.onboardingDate, currentMonth, currentYear);
-                const ps = {
-                  hasPayment: record.paymentReceived > 0,
-                  received: record.paymentReceived || 0,
-                  refund: record.refundAmount || 0,
-                  chargeback: record.chargebackAmount || 0,
-                  net: (record.paymentReceived || 0) + (record.upsellAmount || 0) - (record.downsellAmount || 0) - (record.refundAmount || 0) - (record.chargebackAmount || 0)
-                };
-                if (ps.hasPayment) {
-                  ps.label = 'PAID';
-                  ps.type = 'success';
-                  ps.emoji = '\uD83D\uDFE2';
-                } else {
-                  const billingDate = record.billingStartDate || record.onboardingDate;
-                  const dueDay = parseInt(billingDate.split('-')[2]) || record.paymentDueDay || 1;
-                  const viewMonth = parseInt(currentMonth);
-                  const viewYear = parseInt(currentYear);
-                  const lastDay = new Date(viewYear, viewMonth, 0).getDate();
-                  const dueDayAdjusted = Math.min(dueDay, lastDay);
-                  const dueDate = new Date(viewYear, viewMonth - 1, dueDayAdjusted);
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  dueDate.setHours(0, 0, 0, 0);
-                  const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-                  if (diffDays < 0) { ps.label = `OVERDUE by ${Math.abs(diffDays)} Days`; ps.type = 'danger'; ps.emoji = '\uD83D\uDD34'; }
-                  else if (diffDays === 0) { ps.label = 'DUE TODAY'; ps.type = 'warning'; ps.emoji = '\uD83D\uDFE0'; }
-                  else if (diffDays <= 7) { ps.label = `Invoice in ${diffDays} Days`; ps.type = 'warning'; ps.emoji = '\uD83D\uDFE1'; }
-                  else { ps.label = `DUE IN ${diffDays} DAYS`; ps.type = 'neutral'; ps.emoji = '\u26AA'; }
-                }
+                const ps = getPaymentInfo(record);
+                const paidNet = (record.paymentReceived || 0) + (record.upsellAmount || 0) - (record.downsellAmount || 0) - (record.refundAmount || 0) - (record.chargebackAmount || 0);
+                const psHasPayment = record.paymentReceived > 0;
                 return (
-                  <tr key={record.id} className={selectedIds.has(record.id) ? 'row-selected' : ''} style={{ cursor: 'pointer' }} onClick={() => { setDetailRecord(record); setShowDetailModal(true); }}>
+                  <tr key={record.id} className={`${selectedIds.has(record.id) ? 'row-selected' : ''} ${ps.category === 'overdue' ? 'row-overdue' : ''} ${ps.category === 'duesoon' ? 'row-duesoon' : ''}`} style={{ cursor: 'pointer' }} onClick={() => { setDetailRecord(record); setShowDetailModal(true); }}>
                     <td className="checkbox-cell" onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -746,7 +826,7 @@ export default function Clients() {
                       ) : <span className="text-muted text-xs">—</span>}
                     </td>
                     <td>{formatDate(record.onboardingDate)}</td>
-                    <td>{formatDate(record.billingStartDate || record.onboardingDate)}</td>
+                    <td>Day {record.paymentDueDay || new Date(record.billingStartDate || record.onboardingDate).getDate()}</td>
                     <td>{tenure.text}</td>
                     <td>
                       <span className={`badge badge-${record.status === 'Active' ? 'success' : record.status === 'Paused' ? 'warning' : record.status === 'Cancelled' ? 'danger' : 'info'}`}>
@@ -778,16 +858,16 @@ export default function Clients() {
                       )}
                     </td>
                     <td>
-                      {ps.hasPayment ? (
+                      {psHasPayment ? (
                         <div>
-                          <span className="font-semibold" style={{ color: ps.net > 0 ? 'var(--success)' : (ps.received > 0 ? 'var(--warning)' : 'var(--text-heading)') }}>
-                            {formatUSD(ps.net)}
+                          <span className="font-semibold" style={{ color: paidNet > 0 ? 'var(--success)' : (record.paymentReceived > 0 ? 'var(--warning)' : 'var(--text-heading)') }}>
+                            {formatUSD(paidNet)}
                           </span>
                           <div className="flex items-center gap-1 mt-1">
                             <span className={`badge badge-${ps.type}`}>{ps.emoji} {ps.label}</span>
-                            {(ps.refund > 0 || ps.chargeback > 0) && (
+                            {((record.refundAmount || 0) + (record.chargebackAmount || 0)) > 0 && (
                               <span className="text-xs text-muted">
-                                (-{formatUSD(ps.refund + ps.chargeback)})
+                                (-{formatUSD((record.refundAmount || 0) + (record.chargebackAmount || 0))})
                               </span>
                             )}
                             <button className="btn-icon" title="Mark as Unpaid" onClick={e => { e.stopPropagation(); markAsUnpaid(record.id); }}>
@@ -821,6 +901,11 @@ export default function Clients() {
               })}
             </tbody>
           </table>
+          <div className="table-footer-total">
+            <span className="table-footer-label">Visible total:</span>
+            <span className="table-footer-value">{showAmount(sorted.reduce((s, r) => s + r.monthlyPrice, 0))}</span>
+            <span className="table-footer-sub">/mo across {sorted.length} client{sorted.length !== 1 ? 's' : ''}</span>
+          </div>
         </div>
       ) : (
         <div className="card empty-state">
