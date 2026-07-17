@@ -151,14 +151,7 @@ export const AppProvider = ({ children }) => {
   const [bankDeposits, setBankDeposits] = useState(() => loadFromLS('profitpilot_bankDeposits', []));
   const [pendingWithdrawal, setPendingWithdrawal] = useState(() => loadFromLS('profitpilot_pendingWithdrawal', 0));
   const [assignments, setAssignments] = useState([]);
-  const [disputes, setDisputes] = useState(() => {
-    const saved = loadFromLS('profitpilot_disputes', null);
-    if (saved) return saved;
-    return [
-      { id: uuidv4(), date: '2026-02-20', amount: 102000, platform: 'PayPal', reason: 'Payment dispute — paid back to client', status: 'Resolved', createdAt: new Date().toISOString() },
-      { id: uuidv4(), date: '2026-02-20', amount: 34740, platform: 'Unknown/Bank', reason: 'Unexplained deduction, confirmed by owner to subtract', status: 'Resolved', createdAt: new Date().toISOString() }
-    ];
-  });
+  const [disputes, setDisputes] = useState(() => loadFromLS('profitpilot_disputes', []));
   const [auditLogs, setAuditLogs] = useState([]);
 
   const sheetConnectionDefaults = { url: '', connected: false, status: 'disconnected', lastSync: null, error: '', foundTabs: [] };
@@ -191,7 +184,14 @@ export const AppProvider = ({ children }) => {
     setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
     setAssignments(loadFromLS('profitpilot_assignments', []));
     const savedDisputes = loadFromLS('profitpilot_disputes', null);
-    if (savedDisputes) setDisputes(savedDisputes);
+    if (savedDisputes && savedDisputes.length > 0) {
+      setDisputes(savedDisputes);
+    } else {
+      setDisputes([
+        { id: uuidv4(), date: '2026-02-20', amount: 102000, platform: 'PayPal', reason: 'Payment dispute — paid back to client', status: 'Resolved', createdAt: new Date().toISOString() },
+        { id: uuidv4(), date: '2026-02-20', amount: 34740, platform: 'Unknown/Bank', reason: 'Unexplained deduction, confirmed by owner to subtract', status: 'Resolved', createdAt: new Date().toISOString() }
+      ]);
+    }
 
     const localAuditLogs = loadFromLS('profitpilot_auditLogs', []);
     const { filtered } = filterLogsOlderThan(localAuditLogs, 15);
