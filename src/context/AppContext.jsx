@@ -14,7 +14,8 @@ import {
   loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
   insertAuditLog, loadAuditLogs, deleteAuditLogs,
   loadSheetConnections, saveSheetConnection,
-  loadBankDeposits, saveBankDeposits, deleteBankDepositFromDB
+  loadBankDeposits, saveBankDeposits, deleteBankDepositFromDB,
+  loadDisputes, saveDisputes
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -150,6 +151,14 @@ export const AppProvider = ({ children }) => {
   const [bankDeposits, setBankDeposits] = useState(() => loadFromLS('profitpilot_bankDeposits', []));
   const [pendingWithdrawal, setPendingWithdrawal] = useState(() => loadFromLS('profitpilot_pendingWithdrawal', 0));
   const [assignments, setAssignments] = useState([]);
+  const [disputes, setDisputes] = useState(() => {
+    const saved = loadFromLS('profitpilot_disputes', null);
+    if (saved) return saved;
+    return [
+      { id: uuidv4(), date: '2026-02-20', amount: 102000, platform: 'PayPal', reason: 'Payment dispute — paid back to client', status: 'Resolved', createdAt: new Date().toISOString() },
+      { id: uuidv4(), date: '2026-02-20', amount: 34740, platform: 'Unknown/Bank', reason: 'Unexplained deduction, confirmed by owner to subtract', status: 'Resolved', createdAt: new Date().toISOString() }
+    ];
+  });
   const [auditLogs, setAuditLogs] = useState([]);
 
   const sheetConnectionDefaults = { url: '', connected: false, status: 'disconnected', lastSync: null, error: '', foundTabs: [] };
@@ -181,6 +190,8 @@ export const AppProvider = ({ children }) => {
     setTeam(loadFromLS('profitpilot_team', []));
     setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
     setAssignments(loadFromLS('profitpilot_assignments', []));
+    const savedDisputes = loadFromLS('profitpilot_disputes', null);
+    if (savedDisputes) setDisputes(savedDisputes);
 
     const localAuditLogs = loadFromLS('profitpilot_auditLogs', []);
     const { filtered } = filterLogsOlderThan(localAuditLogs, 15);
@@ -203,14 +214,15 @@ export const AppProvider = ({ children }) => {
 
     async function loadSupabaseData() {
       try {
-        const [settings, records, exp, tm, logs, asgn, deposits] = await Promise.all([
+        const [settings, records, exp, tm, logs, asgn, deposits, disp] = await Promise.all([
           loadSettings(),
           loadMonthlyRecords(),
           loadExpenses(),
           loadTeam(),
           loadSyncLogs(),
           loadClientPmAssignments(),
-          loadBankDeposits()
+          loadBankDeposits(),
+          loadDisputes()
         ]);
 
         if (settings) {
@@ -250,6 +262,10 @@ export const AppProvider = ({ children }) => {
         if (tm && tm.length > 0) setTeam(tm);
         if (logs) setSyncLogs(logs);
         if (asgn) setAssignments(asgn);
+        if (disp) {
+          setDisputes(disp);
+          localStorage.setItem('profitpilot_disputes', JSON.stringify(disp));
+        }
 
         const auditData = await loadAuditLogs();
         if (auditData) {
@@ -354,6 +370,16 @@ export const AppProvider = ({ children }) => {
     }
     localStorage.setItem('profitpilot_auditLogs', JSON.stringify(filtered));
   }, [dataReady, auditLogs]);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    localStorage.setItem('profitpilot_disputes', JSON.stringify(disputes));
+    if (isSupabaseConfigured()) {
+      saveDisputes(disputes).catch(err => {
+        console.error('Supabase save disputes failed:', err.message);
+      });
+    }
+  }, [dataReady, disputes]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -699,6 +725,30 @@ export const AppProvider = ({ children }) => {
     }
   }, []);
 
+  const addDispute = useCallback((disputeData) => {
+    const newDispute = {
+      id: uuidv4(),
+      date: disputeData.date,
+      amount: Number(disputeData.amount),
+      platform: disputeData.platform,
+      reason: disputeData.reason || '',
+      status: disputeData.status || 'Open',
+      createdAt: new Date().toISOString()
+    };
+    setDisputes(prev => [newDispute, ...prev]);
+    return newDispute;
+  }, []);
+
+  const updateDispute = useCallback((id, updates) => {
+    setDisputes(prev => prev.map(d =>
+      d.id === id ? { ...d, ...updates } : d
+    ));
+  }, []);
+
+  const deleteDispute = useCallback((id) => {
+    setDisputes(prev => prev.filter(d => d.id !== id));
+  }, []);
+
   const getBankDepositsForMonth = useCallback((month, year) => {
     const paddedMonth = String(month).padStart(2, '0');
     return bankDeposits.filter(d => {
@@ -752,6 +802,7 @@ export const AppProvider = ({ children }) => {
       convertToINR, formatUSD, formatINR,
       assignments, saveAssignments, deleteAssignment,
       auditLogs, setAuditLogs, logAction, refreshAuditLogs,
+      disputes, setDisputes, addDispute, updateDispute, deleteDispute,
       clientSheet, setClientSheet,
       expenseSheet, setExpenseSheet
     }}>

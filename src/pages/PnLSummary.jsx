@@ -27,7 +27,8 @@ export default function PnLSummary() {
     expenses, currentMonth, currentYear,
     exchangeRate, convertToINR, formatUSD, formatINR, profitGoal,
     bankDeposits, monthlyRecords, getBankDepositsForMonth,
-    pendingWithdrawal
+    pendingWithdrawal,
+    disputes
   } = useContext(AppContext);
 
   const curMonthName = MONTH_LABELS[parseInt(currentMonth)];
@@ -47,10 +48,19 @@ export default function PnLSummary() {
   const totalExpensesINR = monthExpenses.reduce((s, e) => s + e.amount, 0);
   const totalExpensesUSD = totalExpensesINR / exchangeRate;
 
-  const pendingWithdrawalINR = convertToINR(pendingWithdrawal);
-  const totalEffectiveRevenueINR = actualInrReceived + pendingWithdrawalINR;
+  const currentDisputes = disputes.filter(d => {
+    const dDate = new Date(d.date);
+    const dMonth = String(dDate.getMonth() + 1).padStart(2, '0');
+    const dYear = String(dDate.getFullYear());
+    return dMonth === currentMonth && dYear === currentYear;
+  });
+  const totalDisputesINR = currentDisputes.reduce((s, d) => s + d.amount, 0);
+  const netExpensesINR = totalExpensesINR;
 
-  const grossProfitINR = totalEffectiveRevenueINR - totalExpensesINR;
+  const pendingWithdrawalINR = convertToINR(pendingWithdrawal);
+  const totalEffectiveRevenueINR = actualInrReceived + pendingWithdrawalINR - totalDisputesINR;
+
+  const grossProfitINR = totalEffectiveRevenueINR - netExpensesINR;
   const isProfitable = grossProfitINR >= 0;
 
   const expectedProfitINR = nextMonthMRR_INR - totalExpensesINR;
@@ -236,6 +246,12 @@ export default function PnLSummary() {
               <span>Actual INR Received:</span>
               <span className="font-semibold text-success">{formatINR(actualInrReceived)}</span>
             </div>
+            {totalDisputesINR > 0 && (
+              <div className="statement-row">
+                <span>Less: Disputes:</span>
+                <span className="font-semibold text-danger">-{formatINR(totalDisputesINR)}</span>
+              </div>
+            )}
             <div className="statement-row">
               <span>Add: Pending Withdrawal:</span>
               <div className="text-right">
@@ -255,10 +271,16 @@ export default function PnLSummary() {
           <div>
             <h4 className="statement-section-title">EXPENSES</h4>
             <div className="statement-row">
-              <span>Total Expenses:</span>
+              <span>Operating Expenses:</span>
               <span className="font-semibold text-danger">-{formatINR(totalExpensesINR)}</span>
             </div>
             <div className="text-xs text-muted mt-1">(&asymp; {formatUSD(totalExpensesUSD)})</div>
+            <div className="statement-row total-line" style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 4 }}>
+              <span className="font-bold text-heading">Total Expenses:</span>
+              <div className="text-right">
+                <span className="font-bold text-danger">{formatINR(netExpensesINR)}</span>
+              </div>
+            </div>
           </div>
 
           {/* Profit Column */}
@@ -272,7 +294,7 @@ export default function PnLSummary() {
                 </span>
               </div>
             </div>
-            <div className="text-xs text-muted mt-1">Calculation: ({formatINR(actualInrReceived)} + {formatINR(pendingWithdrawalINR)}) &minus; {formatINR(totalExpensesINR)}</div>
+            <div className="text-xs text-muted mt-1">Calculation: ({formatINR(actualInrReceived)} {totalDisputesINR > 0 ? `&minus; ${formatINR(totalDisputesINR)}` : ''} + {formatINR(pendingWithdrawalINR)}) &minus; {formatINR(totalExpensesINR)}</div>
 
             <div className="forecast-box mt-4">
               <h5 className="font-semibold mb-2 flex items-center gap-1"><AlertCircle size={14}/> Forecast for {nextMonthName}</h5>

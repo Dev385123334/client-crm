@@ -2,7 +2,7 @@ import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import { EXPENSE_CATEGORIES, categorizeExpense, parseINRAmount, getBaseRole } from '../utils/helpers';
-import { Plus, Upload, Trash2, Edit3, Filter, Undo2, Archive, RotateCcw, AlertCircle } from 'lucide-react';
+import { Plus, Upload, Trash2, Edit3, Filter, Undo2, Archive, RotateCcw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import Papa from 'papaparse';
 import './Expenses.css';
@@ -11,7 +11,8 @@ export default function Expenses() {
   const { user, userRole } = useContext(AuthContext);
   const canDelete = getBaseRole(userRole) !== 'pm_editor';
 
-  const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR, logAction } = useContext(AppContext);
+  const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR, logAction, disputes, addDispute, updateDispute, deleteDispute } = useContext(AppContext);
+  const [tab, setTab] = useState('expenses');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editExpense, setEditExpense] = useState(null);
@@ -32,6 +33,25 @@ export default function Expenses() {
     .reduce((s, e) => s + e.amount, 0);
 
   const [form, setForm] = useState({ name: '', amount: '', category: 'Salaries', frequency: 'Monthly Recurring', date: '', status: 'Paid', notes: '' });
+
+  // ── Disputes ──
+  const DISPUTE_PLATFORMS = ['PayPal', 'Stripe', 'Payoneer', 'Skydo', 'Unknown/Bank'];
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [disputeForm, setDisputeForm] = useState({ date: `${currentYear}-${currentMonth}-01`, amount: '', platform: 'PayPal', reason: '', status: 'Open' });
+  const [editingDispute, setEditingDispute] = useState(null);
+  const [disputeSortBy, setDisputeSortBy] = useState('date');
+  const [disputeSortAsc, setDisputeSortAsc] = useState(false);
+
+  const totalDisputed = disputes.reduce((s, d) => s + d.amount, 0);
+  const totalResolved = disputes.filter(d => d.status === 'Resolved').reduce((s, d) => s + d.amount, 0);
+  const totalOpen = disputes.filter(d => d.status === 'Open').reduce((s, d) => s + d.amount, 0);
+
+  const sortedDisputes = [...disputes].sort((a, b) => {
+    let cmp = 0;
+    if (disputeSortBy === 'date') cmp = a.date.localeCompare(b.date);
+    else if (disputeSortBy === 'amount') cmp = a.amount - b.amount;
+    return disputeSortAsc ? cmp : -cmp;
+  });
 
   const openAdd = () => {
     setForm({ name: '', amount: '', category: 'Salaries', frequency: 'Monthly Recurring', date: `${currentYear}-${currentMonth}-01`, status: 'Paid', notes: '' });
@@ -225,11 +245,23 @@ export default function Expenses() {
         </div>
       </div>
 
+      {/* Tab toggle */}
+      <div className="disputes-tabs">
+        <button className={`disputes-tab ${tab === 'expenses' ? 'disputes-tab--active' : ''}`} onClick={() => setTab('expenses')}>Expenses</button>
+        <button className={`disputes-tab ${tab === 'disputes' ? 'disputes-tab--active' : ''}`} onClick={() => setTab('disputes')}>
+          Disputes {disputes.length > 0 && <span className="disputes-tab-count">{disputes.length}</span>}
+        </button>
+      </div>
+
+      {tab === 'expenses' && (
       <div className="drop-zone card" onDragOver={e => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={handleDrop} style={dragOver ? { borderColor: 'var(--accent)', background: 'var(--accent-light)' } : {}}>
         <Upload size={20} style={{ color: 'var(--text-muted)' }} />
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Drag & drop a CSV/Excel file here to import expenses</p>
       </div>
+      )}
 
+      {tab === 'expenses' && (
+      <>
       {/* Summary + Filter Row */}
       <div className="breakdown-row">
         <div className="card">
@@ -418,6 +450,159 @@ export default function Expenses() {
             )}
             <div className="flex gap-3" style={{ marginTop: 20, justifyContent: 'flex-end' }}>
               <button className="btn btn-secondary" onClick={() => setShowTrashModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Expenses tab end ── */}
+      </> )}
+
+      {/* ── Disputes tab ── */}
+      {tab === 'disputes' && (
+      <div className="disputes-section">
+        {/* Summary Cards */}
+        <div className="disputes-stats-row">
+          <div className="card disputes-stat-card">
+            <div className="disputes-stat-label">Total Disputed</div>
+            <div className="disputes-stat-value disputes-stat-value--total">{formatINR(totalDisputed)}</div>
+          </div>
+          <div className="card disputes-stat-card">
+            <div className="disputes-stat-label">Resolved / Paid Back</div>
+            <div className="disputes-stat-value disputes-stat-value--resolved">{formatINR(totalResolved)}</div>
+          </div>
+          <div className="card disputes-stat-card">
+            <div className="disputes-stat-label">Still Open</div>
+            <div className="disputes-stat-value disputes-stat-value--open">{formatINR(totalOpen)}</div>
+          </div>
+        </div>
+
+        {/* Add Dispute Button + Sort Controls */}
+        <div className="disputes-toolbar">
+          <button className="btn btn-primary" onClick={() => {
+            setEditingDispute(null);
+            setDisputeForm({ date: `${currentYear}-${currentMonth}-01`, amount: '', platform: 'PayPal', reason: '', status: 'Open' });
+            setShowDisputeForm(true);
+          }}>
+            <Plus size={14} /> Add Dispute
+          </button>
+          <div className="disputes-sort">
+            <span className="text-muted text-sm">Sort by:</span>
+            <select className="input-field disputes-sort-select" value={disputeSortBy} onChange={e => setDisputeSortBy(e.target.value)}>
+              <option value="date">Date</option>
+              <option value="amount">Amount</option>
+            </select>
+            <button className="btn btn-sm btn-secondary" onClick={() => setDisputeSortAsc(!disputeSortAsc)}>
+              {disputeSortAsc ? '↑' : '↓'}
+            </button>
+          </div>
+        </div>
+
+        {/* Disputes Table */}
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table className="table disputes-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Amount</th>
+                <th>Platform</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedDisputes.map(d => (
+                <tr key={d.id}>
+                  <td>{d.date.split('-').reverse().join('/')}</td>
+                  <td className="font-semibold">{formatINR(d.amount)}</td>
+                  <td><span className="badge badge-neutral">{d.platform}</span></td>
+                  <td className="text-muted text-sm">{d.reason || '—'}</td>
+                  <td>
+                    <span className={`badge ${d.status === 'Resolved' ? 'badge-success' : d.status === 'Written Off' ? 'badge-warning' : 'badge-danger'}`}>
+                      {d.status}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="flex gap-2">
+                      <button className="btn-icon" title="Edit" onClick={() => {
+                        setEditingDispute(d);
+                        setDisputeForm({ date: d.date, amount: String(d.amount), platform: d.platform, reason: d.reason || '', status: d.status });
+                        setShowDisputeForm(true);
+                      }}>
+                        <Edit3 size={14} />
+                      </button>
+                      <button className="btn-icon" title="Delete" onClick={() => { if (confirm('Delete this dispute?')) deleteDispute(d.id); }} style={{ color: 'var(--danger)' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {sortedDisputes.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No disputes recorded yet</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
+
+      {/* Dispute Add/Edit Modal */}
+      {showDisputeForm && (
+        <div className="modal-overlay" onClick={() => setShowDisputeForm(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 20 }}>{editingDispute ? 'Edit Dispute' : 'Add Dispute'}</h2>
+            <div className="input-group">
+              <label className="input-label">Date *</label>
+              <input className="input-field" type="date" value={disputeForm.date} onChange={e => setDisputeForm({ ...disputeForm, date: e.target.value })} />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Amount (₹) *</label>
+              <input className="input-field" type="text" inputMode="numeric" value={disputeForm.amount} onChange={e => setDisputeForm({ ...disputeForm, amount: e.target.value })} placeholder="e.g. 50000 or 50,000" />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Platform *</label>
+              <select className="input-field" value={disputeForm.platform} onChange={e => setDisputeForm({ ...disputeForm, platform: e.target.value })}>
+                {DISPUTE_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Reason / Note</label>
+              <input className="input-field" value={disputeForm.reason} onChange={e => setDisputeForm({ ...disputeForm, reason: e.target.value })} placeholder="Optional" />
+            </div>
+            <div className="input-group">
+              <label className="input-label">Status *</label>
+              <select className="input-field" value={disputeForm.status} onChange={e => setDisputeForm({ ...disputeForm, status: e.target.value })}>
+                <option value="Open">Open</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Written Off">Written Off</option>
+              </select>
+            </div>
+            <div className="flex gap-3" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setShowDisputeForm(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => {
+                const amount = parseFloat(disputeForm.amount);
+                if (!amount || amount <= 0) return;
+                if (editingDispute) {
+                  updateDispute(editingDispute.id, {
+                    date: disputeForm.date,
+                    amount,
+                    platform: disputeForm.platform,
+                    reason: disputeForm.reason,
+                    status: disputeForm.status
+                  });
+                } else {
+                  addDispute({
+                    date: disputeForm.date,
+                    amount,
+                    platform: disputeForm.platform,
+                    reason: disputeForm.reason,
+                    status: disputeForm.status
+                  });
+                }
+                setShowDisputeForm(false);
+              }}>Save</button>
             </div>
           </div>
         </div>

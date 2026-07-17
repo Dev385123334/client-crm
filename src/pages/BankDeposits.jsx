@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Plus, Check, X, Edit3, Trash2 } from 'lucide-react';
+import { Plus, Check, X, Edit3, Trash2, ChevronDown, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
 import './BankDeposits.css';
 
 function getToday() {
@@ -30,7 +30,8 @@ export default function BankDeposits() {
     getBankDepositsForMonth,
     monthlyRecords, currentMonth, currentYear,
     formatUSD, formatINR,
-    pendingWithdrawal, setPendingWithdrawal
+    pendingWithdrawal, setPendingWithdrawal,
+    disputes
   } = useContext(AppContext);
 
   const [showForm, setShowForm] = useState(false);
@@ -202,6 +203,29 @@ export default function BankDeposits() {
   const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const curMonthName = monthNames[parseInt(currentMonth)];
 
+  // ── Monthly Summary rebuilt ──
+  const allTimeTotal = Object.values(monthTotals).reduce((a, b) => a + b, 0);
+  const totalDisputesAll = disputes.reduce((s, d) => s + d.amount, 0);
+  const netAllTimeTotal = allTimeTotal - totalDisputesAll;
+  const thisMonthTotal = monthTotals[`${currentYear}-${currentMonth}`] || 0;
+  const prevMonth = parseInt(currentMonth) - 1;
+  const prevYear = prevMonth < 1 ? parseInt(currentYear) - 1 : parseInt(currentYear);
+  const prevMonthKey = `${prevYear}-${String(prevMonth < 1 ? 12 : prevMonth).padStart(2, '0')}`;
+  const lastMonthTotal = monthTotals[prevMonthKey] || 0;
+  const avgMonthly = sortedGroupKeys.length > 0 ? allTimeTotal / sortedGroupKeys.length : 0;
+  const thisMonthTrend = lastMonthTotal > 0 ? ((thisMonthTotal - lastMonthTotal) / lastMonthTotal) * 100 : null;
+
+  // Bar chart
+  const monthsAsc = [...sortedGroupKeys].reverse();
+  const maxBar = Math.max(...Object.values(monthTotals), 1);
+
+  // Accordion state keyed by month key
+  const [expandedMonths, setExpandedMonths] = useState({});
+
+  const toggleMonth = (key) => {
+    setExpandedMonths(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   return (
     <div className="bank-deposits-page">
       <div className="page-header">
@@ -256,26 +280,102 @@ export default function BankDeposits() {
         </div>
       </div>
 
-      {/* Monthly Totals */}
-      <div className="card bd-monthly-totals">
-        <div className="bd-monthly-totals-header">
-          <h2 className="bd-monthly-totals-title">Monthly Totals</h2>
-        </div>
-        <div className="bd-monthly-totals-list">
-          {sortedGroupKeys.map(key => {
-            const [year, month] = key.split('-');
-            const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-            return (
-              <div key={key} className="bd-monthly-totals-row">
-                <span className="bd-monthly-totals-label">{monthName}</span>
-                <span className="bd-monthly-totals-value">{formatINR(monthTotals[key])}</span>
+      {/* Monthly Summary */}
+      <div className="bd-summary">
+        {/* KPI Cards */}
+        <div className="bd-summary-stats">
+          <div className="card bd-summary-stat bd-summary-stat--net">
+            <div className="bd-summary-stat-label">Net Total (Deposits − Disputes)</div>
+            <div className="bd-summary-stat-value">{formatINR(netAllTimeTotal)}</div>
+            <div className="bd-summary-stat-sub">Gross: {formatINR(allTimeTotal)} &minus; Disputes: {formatINR(totalDisputesAll)}</div>
+          </div>
+          <div className="card bd-summary-stat bd-summary-stat--primary">
+            <div className="bd-summary-stat-label">This Month</div>
+            <div className="bd-summary-stat-value">{formatINR(thisMonthTotal)}</div>
+            {thisMonthTrend !== null && (
+              <div className={`bd-summary-stat-trend ${thisMonthTrend >= 0 ? 'bd-summary-stat-trend--up' : 'bd-summary-stat-trend--down'}`}>
+                {thisMonthTrend >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                {Math.abs(thisMonthTrend).toFixed(1)}% vs last month
               </div>
-            );
-          })}
+            )}
+          </div>
+          <div className="card bd-summary-stat">
+            <div className="bd-summary-stat-label">Last Month</div>
+            <div className="bd-summary-stat-value">{formatINR(lastMonthTotal)}</div>
+          </div>
+          <div className="card bd-summary-stat">
+            <div className="bd-summary-stat-label">Avg Monthly Deposit</div>
+            <div className="bd-summary-stat-value">{formatINR(avgMonthly)}</div>
+            <div className="bd-summary-stat-sub">Across {sortedGroupKeys.length} months</div>
+          </div>
         </div>
-        <div className="bd-monthly-totals-footer">
-          <span className="bd-monthly-totals-footer-label">Grand Total</span>
-          <span className="bd-monthly-totals-footer-value">{formatINR(Object.values(monthTotals).reduce((a, b) => a + b, 0))}</span>
+
+        {/* Bar Chart */}
+        {monthsAsc.length > 0 && (
+          <div className="card bd-bar-chart-card">
+            <h3 className="bd-bar-chart-title">Monthly Trend</h3>
+            <div className="bd-bar-chart">
+              {monthsAsc.map(key => {
+                const [year, month] = key.split('-');
+                const label = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+                const val = monthTotals[key] || 0;
+                const pct = (val / maxBar) * 100;
+                return (
+                  <div key={key} className="bd-bar-chart-item" title={`${label}: ${formatINR(val)} (${grouped[key].length} txns)`}>
+                    <div className="bd-bar-chart-bar" style={{ height: `${Math.max(pct, 4)}%` }}>
+                      <div className="bd-bar-chart-tooltip">
+                        {formatINR(val)}<br /><span className="text-xs">{grouped[key].length} txns</span>
+                      </div>
+                    </div>
+                    <span className="bd-bar-chart-label">{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Accordion */}
+        <div className="card bd-accordion-card">
+          <div className="bd-accordion-card-header">
+            <h3 className="bd-accordion-title">Month-by-Month Breakdown</h3>
+            <div className="bd-accordion-total-wrap">
+              <span className="bd-accordion-total">{formatINR(netAllTimeTotal)}</span>
+              <span className="bd-accordion-total-sub">net of {formatINR(totalDisputesAll)} disputes</span>
+            </div>
+          </div>
+          <div className="bd-accordion">
+            {sortedGroupKeys.map(key => {
+              const [year, month] = key.split('-');
+              const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+              const isOpen = expandedMonths[key];
+              return (
+                <div key={key} className="bd-accordion-item">
+                  <div className="bd-accordion-header" onClick={() => toggleMonth(key)}>
+                    <div className="bd-accordion-header-left">
+                      {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      <span className="bd-accordion-month">{monthName}</span>
+                    </div>
+                    <div className="bd-accordion-header-right">
+                      <span className="bd-accordion-count">{grouped[key].length} txn{grouped[key].length !== 1 ? 's' : ''}</span>
+                      <span className="bd-accordion-amount">{formatINR(monthTotals[key])}</span>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div className="bd-accordion-body">
+                      {grouped[key].map(deposit => (
+                        <div key={deposit.id} className="bd-accordion-row">
+                          <span className="bd-accordion-row-date">{formatDateDisplay(deposit.date)}</span>
+                          <span className="bd-accordion-row-amount">{formatINR(deposit.inrAmount)}</span>
+                          {deposit.note && <span className="bd-accordion-row-note">{deposit.note}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 

@@ -358,6 +358,37 @@ export async function deleteBankDepositFromDB(id) {
   if (error) throw new Error(`Failed to delete bank deposit from DB: ${error.message}`);
 }
 
+export async function loadDisputes() {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.from('disputes').select('*').order('date', { ascending: false });
+  if (error || !data) return null;
+  if (data.length === 0) return null;
+  return data.map(row => ({
+    id: row.id,
+    date: row.date,
+    amount: Number(row.amount),
+    platform: row.platform,
+    reason: row.reason || '',
+    status: row.status,
+    createdAt: row.created_at
+  }));
+}
+
+export async function saveDisputes(disputes) {
+  if (!isSupabaseConfigured() || disputes.length === 0) return;
+  const rows = disputes.map(d => ({
+    id: d.id,
+    date: d.date,
+    amount: d.amount,
+    platform: d.platform,
+    reason: d.reason || '',
+    status: d.status,
+    updated_at: new Date().toISOString()
+  }));
+  const { error } = await supabase.from('disputes').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  if (error) throw new Error(`Failed to save disputes to DB: ${error.message}`);
+}
+
 export async function migrateFromLocalStorage() {
   if (!isSupabaseConfigured()) return false;
   const loadLS = (key, def) => {
