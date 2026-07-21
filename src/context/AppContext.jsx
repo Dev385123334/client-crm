@@ -243,7 +243,32 @@ export const AppProvider = ({ children }) => {
         const supabaseHasRecords = records && Object.keys(records).length > 0;
 
         if (supabaseHasRecords) {
-          setMonthlyRecords(dedupRecords(cleanupExpiredTrash(records)));
+          const merged = { ...records };
+          for (const key of Object.keys(merged)) {
+            if (localRecords?.[key]) {
+              const localByName = {};
+              for (const lr of localRecords[key]) {
+                const n = (lr.businessName || '').trim().toLowerCase();
+                if (n && !lr.isDeleted) localByName[n] = lr;
+              }
+              merged[key] = merged[key].map(sr => {
+                const n = (sr.businessName || '').trim().toLowerCase();
+                if (n && localByName[n] && !sr.isDeleted) {
+                  const lr = localByName[n];
+                  return {
+                    ...sr,
+                    paymentReceived: lr.paymentReceived ?? sr.paymentReceived ?? 0,
+                    refundAmount: lr.refundAmount ?? sr.refundAmount ?? 0,
+                    chargebackAmount: lr.chargebackAmount ?? sr.chargebackAmount ?? 0,
+                    upsellAmount: lr.upsellAmount ?? sr.upsellAmount ?? 0,
+                    downsellAmount: lr.downsellAmount ?? sr.downsellAmount ?? 0,
+                  };
+                }
+                return sr;
+              });
+            }
+          }
+          setMonthlyRecords(dedupRecords(cleanupExpiredTrash(merged)));
         } else if (!localHasRecords) {
           const migrated = await migrateFromLocalStorage();
           if (migrated) {
@@ -314,18 +339,19 @@ export const AppProvider = ({ children }) => {
     }
   }, [dataReady, exchangeRate, profitGoal, currencyView, pendingWithdrawal]);
 
+  const saveMonthlyNow = useCallback(() => {
+    localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(monthlyRecordsRef.current));
+    if (isSupabaseConfigured()) {
+      saveMonthlyRecords(monthlyRecordsRef.current).catch(err => {
+        console.error('Supabase save failed (data preserved in localStorage):', err.message);
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (!dataReady) return;
-    const timer = setTimeout(() => {
-      localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(monthlyRecords));
-      if (isSupabaseConfigured()) {
-        saveMonthlyRecords(monthlyRecords).catch(err => {
-          console.error('Supabase save failed (data preserved in localStorage):', err.message);
-        });
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [dataReady, monthlyRecords]);
+    saveMonthlyNow();
+  }, [dataReady, monthlyRecords, saveMonthlyNow]);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -430,7 +456,7 @@ export const AppProvider = ({ children }) => {
     return trash.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
   }, [monthlyRecords]);
 
-  const addRecordToMonth = useCallback((recordData, month = currentMonth, year = currentYear) => {
+  const addRecordToMonth = useCallback((recordData, month = currentMonth, year = currentYear, skipDuplicates = false) => {
     const key = `${year}-${month}`;
     const cleanData = {
       ...recordData,
@@ -443,6 +469,9 @@ export const AppProvider = ({ children }) => {
         (r.businessName || '').trim().toLowerCase() === cleanData.businessName.toLowerCase() && !r.isDeleted
       );
       if (dup >= 0) {
+        if (skipDuplicates) {
+          return prev;
+        }
         const updated = [...existing];
         updated[dup] = { ...updated[dup], ...cleanData };
         return { ...prev, [key]: updated };
@@ -465,7 +494,7 @@ export const AppProvider = ({ children }) => {
       if (!records) return prev;
 
       const currentRecord = records.find(r => r.id === recordId);
-      if (!currentRecord) return { ...prev, [currentKey]: records.map(r => r.id === recordId ? { ...r, ...updates } : r) };
+      if (!currentRecord) return prev;
 
       const bizName = toPropagate.businessName || currentRecord.businessName;
       const onboardDate = currentRecord.onboardingDate;
@@ -557,7 +586,7 @@ export const AppProvider = ({ children }) => {
       if (!sourceKey) return prev;
       const sourceRecords = prev[sourceKey];
       const newRecords = sourceRecords
-        .filter(r => !r.isDeleted && r.status !== 'Cancelled')
+        .filter(r => !r.isDeleted && r.status !== 'Cancelled' && r.status !== 'Paused')
         .map(r => ({
           ...r,
           id: uuidv4(),

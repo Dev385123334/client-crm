@@ -24,8 +24,8 @@ function parseExpenseDate(dateStr) {
 const VITE_GOOGLE_SHEETS_API_KEY = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_GOOGLE_SHEETS_API_KEY : '';
 
 export default function Integrations() {
-  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, saveExpensesNow, clientSheet, setClientSheet, expenseSheet, setExpenseSheet } = useContext(AppContext);
-  const { userRole } = useContext(AuthContext);
+  const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, saveExpensesNow, clientSheet, setClientSheet, expenseSheet, setExpenseSheet, logAction } = useContext(AppContext);
+  const { user, userRole } = useContext(AuthContext);
   const baseRole = getBaseRole(userRole);
   const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor';
   const canSeeExpense = baseRole === 'admin' || baseRole === 'hr_editor';
@@ -269,7 +269,7 @@ export default function Integrations() {
               paymentDueDay: new Date(isoDate).getDate(),
               paymentMethod: 'Stripe',
               status: 'Active'
-            }, monthTab.parsed.month, monthTab.parsed.year);
+            }, monthTab.parsed.month, monthTab.parsed.year, true);
             imported++;
           }
           tabResults.push(`${monthTab.title}: ${imported} imported, ${skipped} skipped`);
@@ -294,6 +294,9 @@ export default function Integrations() {
           error: ''
         }));
 
+        if (totalImported > 0 && logAction) {
+          logAction({ user, actionType: 'client.bulk_import', entityType: 'client', entityName: `${totalImported} clients`, details: { imported: totalImported, skipped: totalSkipped, source: 'google_sheets', trigger: 'sheets_sync', monthTabs: monthTabs.map(t => t.title) } });
+        }
         const detail = tabResults.join(' | ');
         addLog(label, totalImported > 0
           ? `Synced ${totalImported} clients across ${monthTabs.length} month(s). ${detail}`

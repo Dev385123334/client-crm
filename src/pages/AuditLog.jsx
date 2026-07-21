@@ -307,6 +307,20 @@ export default function AuditLog() {
                     {log.action_type === 'client.update' && log.details?.fields && (
                       <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                         Fields: {log.details.fields.join(', ')}
+                        {log.details?.statusChange && (
+                          <span style={{ marginLeft: 8 }}>Status: {log.details.statusChange.from} → {log.details.statusChange.to}</span>
+                        )}
+                        {log.details?.paymentChange && (
+                          <span style={{ marginLeft: 8 }}>Payment: {log.details.paymentChange.from} → {log.details.paymentChange.to}</span>
+                        )}
+                      </span>
+                    )}
+                    {(log.action_type === 'client.mark_paid' || log.action_type === 'client.mark_unpaid') && log.details?.trigger && (
+                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        {log.details.trigger === 'sheets_sync' ? 'Trigger: Google Sheets Sync' : 'Trigger: Manual'} | Month: {log.details.month}/{log.details.year}
+                        {log.details?.previousPaymentReceived !== undefined && (
+                          <span style={{ marginLeft: 8 }}>Prev: ${log.details.previousPaymentReceived}</span>
+                        )}
                       </span>
                     )}
                   </span>

@@ -281,14 +281,14 @@ export default function Clients() {
   };
 
   const markAsPaid = (recordId, amount) => {
-    updateRecordInMonth(recordId, { paymentReceived: amount, refundAmount: 0, chargebackAmount: 0 });
     const rec = currentMonthRecords.find(r => r.id === recordId);
-    logAction({ user, actionType: 'client.mark_paid', entityType: 'client', entityId: recordId, entityName: rec?.businessName, details: { amount } });
+    updateRecordInMonth(recordId, { paymentReceived: amount, refundAmount: 0, chargebackAmount: 0 });
+    logAction({ user, actionType: 'client.mark_paid', entityType: 'client', entityId: recordId, entityName: rec?.businessName, details: { amount, previousPaymentReceived: rec?.paymentReceived, month: currentMonth, year: currentYear, trigger: 'manual' } });
   };
   const markAsUnpaid = (recordId) => {
-    updateRecordInMonth(recordId, { paymentReceived: 0 });
     const rec = currentMonthRecords.find(r => r.id === recordId);
-    logAction({ user, actionType: 'client.mark_unpaid', entityType: 'client', entityId: recordId, entityName: rec?.businessName });
+    updateRecordInMonth(recordId, { paymentReceived: 0 });
+    logAction({ user, actionType: 'client.mark_unpaid', entityType: 'client', entityId: recordId, entityName: rec?.businessName, details: { previousPaymentReceived: rec?.paymentReceived, month: currentMonth, year: currentYear, trigger: 'manual' } });
   };
 
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -392,8 +392,9 @@ export default function Clients() {
     };
 
     if (editRecordId) {
+      const prevRecord = currentMonthRecords.find(r => r.id === editRecordId);
       updateRecordInMonth(editRecordId, recordData);
-      logAction({ user, actionType: 'client.update', entityType: 'client', entityId: editRecordId, entityName: form.businessName, details: { fields: Object.keys(recordData) } });
+      logAction({ user, actionType: 'client.update', entityType: 'client', entityId: editRecordId, entityName: form.businessName, details: { fields: Object.keys(recordData), statusChange: prevRecord?.status !== form.status ? { from: prevRecord?.status, to: form.status } : undefined, paymentChange: prevRecord?.paymentReceived !== (parseFloat(form.paymentReceived) || 0) ? { from: prevRecord?.paymentReceived, to: parseFloat(form.paymentReceived) || 0 } : undefined, month: currentMonth, year: currentYear, trigger: 'manual' } });
     } else {
       addRecordToMonth(recordData);
       logAction({ user, actionType: 'client.create', entityType: 'client', entityName: form.businessName, details: { monthlyPrice: recordData.monthlyPrice } });
