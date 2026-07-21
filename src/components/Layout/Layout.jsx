@@ -9,7 +9,7 @@ import '../SecurityLayer/SecurityLayer.css';
 import './Layout.css';
 
 const allNavItems = [
-  { path: '/clients', label: 'Clients', icon: Users, roles: ['admin', 'pm_editor'] },
+  { path: '/clients', label: 'Clients', icon: Users, roles: ['admin', 'pm_editor', 'senior_pm'] },
   { path: '/bank-deposits', label: 'Bank Deposits', icon: Landmark, roles: ['admin'] },
   { path: '/expenses', label: 'Expenses', icon: Receipt, roles: ['admin', 'hr_editor'] },
   { path: '/team', label: 'Team', icon: UsersRound, roles: ['admin', 'hr_editor'] },
@@ -17,7 +17,7 @@ const allNavItems = [
   { path: '/retention', label: 'PM Retention', icon: UserCheck, roles: ['admin'] },
   { path: '/forecast', label: 'Revenue Forecast', icon: TrendingUp, roles: ['admin'] },
   { path: '/scaling', label: 'Sales Scaling', icon: ScatterChart, roles: ['admin', 'hr_editor'] },
-  { path: '/integrations', label: 'Integrations', icon: Link2, roles: ['admin', 'hr_editor', 'pm_editor'] },
+  { path: '/integrations', label: 'Integrations', icon: Link2, roles: ['admin', 'hr_editor', 'pm_editor', 'senior_pm'] },
   { path: '/client-pm', label: 'Client-PM', icon: UserPlus, roles: ['admin'] },
   { path: '/audit-log', label: 'Audit Log', icon: ClipboardList, roles: ['admin'] },
 ];

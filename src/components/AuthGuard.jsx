@@ -7,12 +7,14 @@ const roleAllowedRoutes = {
   admin: null,
   pm_editor: ['/clients', '/integrations'],
   hr_editor: ['/expenses', '/team', '/scaling', '/integrations'],
+  senior_pm: ['/clients', '/integrations'],
 };
 
 const roleDefaultRoutes = {
   admin: '/clients',
   pm_editor: '/clients',
   hr_editor: '/expenses',
+  senior_pm: '/clients',
 };
 
 export default function AuthGuard({ children }) {

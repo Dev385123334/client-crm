@@ -27,7 +27,7 @@ export default function Integrations() {
   const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, saveExpensesNow, clientSheet, setClientSheet, expenseSheet, setExpenseSheet, logAction } = useContext(AppContext);
   const { user, userRole } = useContext(AuthContext);
   const baseRole = getBaseRole(userRole);
-  const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor';
+  const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor' || baseRole === 'senior_pm';
   const canSeeExpense = baseRole === 'admin' || baseRole === 'hr_editor';
 
   const [syncFrequency, setSyncFrequency] = useState(30);

@@ -187,5 +187,6 @@ export function getPmNames() {
 export function getBaseRole(role) {
   if (role === 'admin') return 'admin';
   if (role === 'hr_editor') return 'hr_editor';
+  if (role === 'senior_pm') return 'senior_pm';
   return 'pm_editor';
 }
