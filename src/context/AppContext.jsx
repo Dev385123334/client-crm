@@ -483,7 +483,12 @@ export const AppProvider = ({ children }) => {
 
   const updateRecordInMonth = useCallback((recordId, updates, month = currentMonth, year = currentYear) => {
     const currentKey = `${year}-${month}`;
-    const propagateFields = ['businessName', 'contactPerson', 'phone', 'email', 'website', 'monthlyPrice', 'status', 'statusDate', 'statusNote', 'handledBy', 'contractEndDate', 'paymentDueDay', 'paymentMethod', 'notes'];
+    const propagateFields = [
+      'businessName', 'contactPerson', 'phone', 'email', 'website',
+      'monthlyPrice', 'onboardingDate', 'billingStartDate',
+      'status', 'statusDate', 'statusNote', 'handledBy',
+      'contractEndDate', 'paymentDueDay', 'paymentMethod', 'notes'
+    ];
     const toPropagate = {};
     for (const field of propagateFields) {
       if (field in updates) toPropagate[field] = updates[field];
@@ -496,8 +501,7 @@ export const AppProvider = ({ children }) => {
       const currentRecord = records.find(r => r.id === recordId);
       if (!currentRecord) return prev;
 
-      const bizName = toPropagate.businessName || currentRecord.businessName;
-      const onboardDate = currentRecord.onboardingDate;
+      const oldBizNameKey = (currentRecord.businessName || '').trim().toLowerCase();
 
       const updated = { ...prev };
       updated[currentKey] = records.map(r => r.id === recordId ? { ...r, ...updates } : r);
@@ -508,7 +512,7 @@ export const AppProvider = ({ children }) => {
         const keyVal = y * 12 + m;
         if (keyVal > targetVal) {
           updated[key] = (updated[key] || []).map(r =>
-            r.businessName === bizName && r.onboardingDate === onboardDate && !r.isDeleted
+            (r.businessName || '').trim().toLowerCase() === oldBizNameKey && !r.isDeleted
               ? { ...r, ...toPropagate }
               : r
           );
