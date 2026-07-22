@@ -463,10 +463,14 @@ export const AppProvider = ({ children }) => {
       businessName: (recordData.businessName || '').trim()
     };
     const newRecord = createMonthlyRecord(cleanData, { id: uuidv4() });
+    const targetVal = parseInt(year) * 12 + parseInt(month);
+    const targetBizNameKey = cleanData.businessName.toLowerCase();
+
     setMonthlyRecords(prev => {
-      const existing = prev[key] || [];
+      const nextState = { ...prev };
+      const existing = nextState[key] || [];
       const dup = existing.findIndex(r =>
-        (r.businessName || '').trim().toLowerCase() === cleanData.businessName.toLowerCase() && !r.isDeleted
+        (r.businessName || '').trim().toLowerCase() === targetBizNameKey && !r.isDeleted
       );
       if (dup >= 0) {
         if (skipDuplicates) {
@@ -474,9 +478,34 @@ export const AppProvider = ({ children }) => {
         }
         const updated = [...existing];
         updated[dup] = { ...updated[dup], ...cleanData };
-        return { ...prev, [key]: updated };
+        nextState[key] = updated;
+      } else {
+        nextState[key] = [...existing, newRecord];
       }
-      return { ...prev, [key]: [...existing, newRecord] };
+
+      for (const k of Object.keys(nextState)) {
+        const [y, m] = k.split('-').map(Number);
+        const kVal = y * 12 + m;
+        if (kVal > targetVal && nextState[k] && nextState[k].length > 0) {
+          const futureExisting = nextState[k];
+          const existsInFuture = futureExisting.some(r =>
+            (r.businessName || '').trim().toLowerCase() === targetBizNameKey && !r.isDeleted
+          );
+          if (!existsInFuture) {
+            const carriedOver = createMonthlyRecord(cleanData, {
+              id: uuidv4(),
+              paymentReceived: 0,
+              refundAmount: 0,
+              chargebackAmount: 0,
+              upsellAmount: 0,
+              downsellAmount: 0
+            });
+            nextState[k] = [...futureExisting, carriedOver];
+          }
+        }
+      }
+
+      return nextState;
     });
     return newRecord;
   }, [currentMonth, currentYear]);
@@ -590,7 +619,7 @@ export const AppProvider = ({ children }) => {
       if (!sourceKey) return prev;
       const sourceRecords = prev[sourceKey];
       const newRecords = sourceRecords
-        .filter(r => !r.isDeleted && r.status !== 'Cancelled' && r.status !== 'Paused')
+        .filter(r => !r.isDeleted)
         .map(r => ({
           ...r,
           id: uuidv4(),
