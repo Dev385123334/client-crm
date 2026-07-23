@@ -491,7 +491,7 @@ export const AppProvider = ({ children }) => {
           const existsInFuture = futureExisting.some(r =>
             (r.businessName || '').trim().toLowerCase() === targetBizNameKey && !r.isDeleted
           );
-          if (!existsInFuture) {
+          if (!existsInFuture && cleanData.status !== 'Cancelled') {
             const carriedOver = createMonthlyRecord(cleanData, {
               id: uuidv4(),
               paymentReceived: 0,
@@ -510,7 +510,7 @@ export const AppProvider = ({ children }) => {
     return newRecord;
   }, [currentMonth, currentYear]);
 
-  const updateRecordInMonth = useCallback((recordId, updates, month = currentMonth, year = currentYear) => {
+  const updateRecordInMonth = useCallback(async (recordId, updates, month = currentMonth, year = currentYear) => {
     const currentKey = `${year}-${month}`;
     const propagateFields = [
       'businessName', 'contactPerson', 'phone', 'email', 'website',
@@ -521,6 +521,31 @@ export const AppProvider = ({ children }) => {
     const toPropagate = {};
     for (const field of propagateFields) {
       if (field in updates) toPropagate[field] = updates[field];
+    }
+
+    const isBeingCancelled = updates.status === 'Cancelled';
+    const recordsToDelete = [];
+
+    if (isBeingCancelled) {
+      const prev = monthlyRecordsRef.current;
+      const records = prev[currentKey];
+      if (records) {
+        const currentRecord = records.find(r => r.id === recordId);
+        if (currentRecord) {
+          const bizNameKey = (currentRecord.businessName || '').trim().toLowerCase();
+          const targetVal = parseInt(year) * 12 + parseInt(month);
+          for (const [key, recs] of Object.entries(prev)) {
+            const [y, m] = key.split('-').map(Number);
+            if (y * 12 + m > targetVal) {
+              for (const r of recs) {
+                if ((r.businessName || '').trim().toLowerCase() === bizNameKey && !r.isDeleted) {
+                  recordsToDelete.push(r.id);
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     setMonthlyRecords(prev => {
@@ -540,16 +565,30 @@ export const AppProvider = ({ children }) => {
         const [y, m] = key.split('-').map(Number);
         const keyVal = y * 12 + m;
         if (keyVal > targetVal) {
-          updated[key] = (updated[key] || []).map(r =>
-            (r.businessName || '').trim().toLowerCase() === oldBizNameKey && !r.isDeleted
-              ? { ...r, ...toPropagate }
-              : r
-          );
+          if (isBeingCancelled) {
+            updated[key] = (updated[key] || []).filter(r =>
+              !((r.businessName || '').trim().toLowerCase() === oldBizNameKey && !r.isDeleted)
+            );
+          } else {
+            updated[key] = (updated[key] || []).map(r =>
+              (r.businessName || '').trim().toLowerCase() === oldBizNameKey && !r.isDeleted
+                ? { ...r, ...toPropagate }
+                : r
+            );
+          }
         }
       }
 
       return updated;
     });
+
+    if (recordsToDelete.length > 0 && isSupabaseConfigured()) {
+      try {
+        await deleteMonthlyRecords(recordsToDelete);
+      } catch (err) {
+        console.error('Failed to delete future cancelled records from DB:', err.message);
+      }
+    }
   }, [currentMonth, currentYear]);
 
   const softDeleteRecord = useCallback((recordId, reason = '', month = currentMonth, year = currentYear) => {
@@ -619,7 +658,7 @@ export const AppProvider = ({ children }) => {
       if (!sourceKey) return prev;
       const sourceRecords = prev[sourceKey];
       const newRecords = sourceRecords
-        .filter(r => !r.isDeleted)
+        .filter(r => !r.isDeleted && r.status !== 'Cancelled')
         .map(r => ({
           ...r,
           id: uuidv4(),
