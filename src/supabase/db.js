@@ -172,7 +172,10 @@ export async function loadTeam() {
 }
 
 export async function saveTeam(team) {
-  if (!isSupabaseConfigured() || team.length === 0) return;
+  if (!isSupabaseConfigured()) return;
+  const { error: delError } = await supabase.from('team_members').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (delError) throw new Error(`Failed to clear team in DB: ${delError.message}`);
+  if (team.length === 0) return;
   const rows = team.map(m => ({
     id: m.id,
     name: m.name,
@@ -181,7 +184,7 @@ export async function saveTeam(team) {
     monthly_salary: m.monthlySalary,
     updated_at: new Date().toISOString()
   }));
-  const { error } = await supabase.from('team_members').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
+  const { error } = await supabase.from('team_members').insert(rows);
   if (error) throw new Error(`Failed to save team to DB: ${error.message}`);
 }
 
