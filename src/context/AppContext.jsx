@@ -303,8 +303,20 @@ export const AppProvider = ({ children }) => {
 
         const sheets = await loadSheetConnections(user.id);
         if (sheets) {
-          if (sheets.client) setClientSheet(prev => ({ ...prev, ...sheets.client }));
-          if (sheets.expense) setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
+          if (sheets.client) {
+            setClientSheet(prev => ({
+              ...prev,
+              ...sheets.client,
+              connected: prev.connected || sheets.client.connected
+            }));
+          }
+          if (sheets.expense) {
+            setExpenseSheet(prev => ({
+              ...prev,
+              ...sheets.expense,
+              connected: prev.connected || sheets.expense.connected
+            }));
+          }
         }
       } catch (err) {
         console.error('Failed to load data from Supabase:', err.message);
@@ -729,8 +741,13 @@ export const AppProvider = ({ children }) => {
     });
   }, []);
 
+  const lastCarryKey = useRef('');
+
   useEffect(() => {
     if (!dataReady) return;
+    const key = `${currentYear}-${currentMonth}`;
+    if (lastCarryKey.current === key) return;
+    lastCarryKey.current = key;
     carryOverRecurringExpenses(currentMonth, currentYear);
   }, [currentMonth, currentYear, carryOverRecurringExpenses, dataReady]);
 
