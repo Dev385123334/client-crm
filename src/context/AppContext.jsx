@@ -15,7 +15,7 @@ import {
   insertAuditLog, loadAuditLogs, deleteAuditLogs,
   loadSheetConnections, saveSheetConnection,
   loadBankDeposits, saveBankDeposits, deleteBankDepositFromDB,
-  loadDisputes, saveDisputes
+  loadDisputes, saveDisputes, deleteDisputesFromDB
 } from '../supabase/db';
 
 export const AppContext = createContext();
@@ -301,7 +301,7 @@ export const AppProvider = ({ children }) => {
           setAuditLogs(filtered);
         }
 
-        const sheets = await loadSheetConnections(user.id);
+        const sheets = await loadSheetConnections();
         if (sheets) {
           if (sheets.client) {
             setClientSheet(prev => ({
@@ -424,8 +424,8 @@ export const AppProvider = ({ children }) => {
     const persisted = { ...clientSheet };
     delete persisted.syncing;
     localStorage.setItem('profitpilot_clientSheet', JSON.stringify(persisted));
-    if (isSupabaseConfigured() && user) {
-      saveSheetConnection(user.id, 'client', persisted).catch(err =>
+    if (isSupabaseConfigured()) {
+      saveSheetConnection('client', persisted).catch(err =>
         console.error('Failed to save client sheet to DB:', err.message)
       );
     }
@@ -436,8 +436,8 @@ export const AppProvider = ({ children }) => {
     const persisted = { ...expenseSheet };
     delete persisted.syncing;
     localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(persisted));
-    if (isSupabaseConfigured() && user) {
-      saveSheetConnection(user.id, 'expense', persisted).catch(err =>
+    if (isSupabaseConfigured()) {
+      saveSheetConnection('expense', persisted).catch(err =>
         console.error('Failed to save expense sheet to DB:', err.message)
       );
     }
@@ -835,13 +835,15 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const deleteBankDeposit = useCallback(async (id) => {
+    const prev = bankDeposits;
     setBankDeposits(prev => prev.filter(d => d.id !== id));
     try {
       await deleteBankDepositFromDB(id);
     } catch (err) {
       console.error('Failed to delete bank deposit from DB:', err.message);
+      setBankDeposits(prev);
     }
-  }, []);
+  }, [bankDeposits]);
 
   const addDispute = useCallback((disputeData) => {
     const newDispute = {
@@ -865,6 +867,11 @@ export const AppProvider = ({ children }) => {
 
   const deleteDispute = useCallback((id) => {
     setDisputes(prev => prev.filter(d => d.id !== id));
+    if (isSupabaseConfigured()) {
+      deleteDisputesFromDB([id]).catch(err =>
+        console.error('Failed to delete dispute from DB:', err.message)
+      );
+    }
   }, []);
 
   const getBankDepositsForMonth = useCallback((month, year) => {

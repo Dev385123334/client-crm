@@ -286,9 +286,9 @@ export async function deleteAuditLogs(ids) {
   await supabase.from('audit_logs').delete().in('id', ids);
 }
 
-export async function loadSheetConnections(userId) {
-  if (!isSupabaseConfigured() || !userId) return null;
-  const { data, error } = await supabase.from('sheet_connections').select('*').eq('user_id', userId);
+export async function loadSheetConnections() {
+  if (!isSupabaseConfigured()) return null;
+  const { data, error } = await supabase.from('sheet_connections').select('*');
   if (error || !data) return null;
   const result = {};
   for (const row of data) {
@@ -304,10 +304,9 @@ export async function loadSheetConnections(userId) {
   return result;
 }
 
-export async function saveSheetConnection(userId, sheetType, data) {
-  if (!isSupabaseConfigured() || !userId) return;
+export async function saveSheetConnection(sheetType, data) {
+  if (!isSupabaseConfigured()) return;
   const { error } = await supabase.from('sheet_connections').upsert({
-    user_id: userId,
     sheet_type: sheetType,
     url: data.url || '',
     connected: data.connected || false,
@@ -317,15 +316,15 @@ export async function saveSheetConnection(userId, sheetType, data) {
     found_tabs: data.foundTabs || [],
     updated_at: new Date().toISOString()
   }, {
-    onConflict: 'user_id,sheet_type',
+    onConflict: 'sheet_type',
     ignoreDuplicates: false
   });
   if (error) console.error('Failed to save sheet connection:', error.message);
 }
 
-export async function deleteSheetConnection(userId, sheetType) {
-  if (!isSupabaseConfigured() || !userId) return;
-  await supabase.from('sheet_connections').delete().eq('user_id', userId).eq('sheet_type', sheetType);
+export async function deleteSheetConnection(sheetType) {
+  if (!isSupabaseConfigured()) return;
+  await supabase.from('sheet_connections').delete().eq('sheet_type', sheetType);
 }
 
 export async function loadBankDeposits() {
@@ -390,6 +389,12 @@ export async function saveDisputes(disputes) {
   }));
   const { error } = await supabase.from('disputes').upsert(rows, { onConflict: 'id', ignoreDuplicates: false });
   if (error) throw new Error(`Failed to save disputes to DB: ${error.message}`);
+}
+
+export async function deleteDisputesFromDB(ids) {
+  if (!isSupabaseConfigured() || ids.length === 0) return;
+  const { error } = await supabase.from('disputes').delete().in('id', ids);
+  if (error) throw new Error(`Failed to delete disputes from DB: ${error.message}`);
 }
 
 export async function migrateFromLocalStorage() {
