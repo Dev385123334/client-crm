@@ -166,8 +166,14 @@ export const AppProvider = ({ children }) => {
   const [disputes, setDisputes] = useState(() => loadFromLS('profitpilot_disputes', []));
   const [auditLogs, setAuditLogs] = useState([]);
 
-  const [clientSheet, setClientSheet] = useState({ ...SHEET_CONNECTION_DEFAULTS });
-  const [expenseSheet, setExpenseSheet] = useState({ ...SHEET_CONNECTION_DEFAULTS });
+  const [clientSheet, setClientSheet] = useState(() => {
+    const ls = loadFromLS('profitpilot_clientSheet', null);
+    return ls && ls.connected ? { ...SHEET_CONNECTION_DEFAULTS, ...ls } : { ...SHEET_CONNECTION_DEFAULTS };
+  });
+  const [expenseSheet, setExpenseSheet] = useState(() => {
+    const ls = loadFromLS('profitpilot_expenseSheet', null);
+    return ls && ls.connected ? { ...SHEET_CONNECTION_DEFAULTS, ...ls } : { ...SHEET_CONNECTION_DEFAULTS };
+  });
 
   const { user, loading: authLoading } = useContext(AuthContext);
 
@@ -321,14 +327,22 @@ export const AppProvider = ({ children }) => {
         const lsClientSheet = loadFromLS('profitpilot_clientSheet', null);
         if (!sheets?.client && lsClientSheet && lsClientSheet.connected) {
           setClientSheet({ ...SHEET_CONNECTION_DEFAULTS, ...lsClientSheet });
-          saveSheetConnection(user.id, 'client', lsClientSheet).catch(() => {});
-          localStorage.removeItem('profitpilot_clientSheet');
+          try {
+            await saveSheetConnection(user.id, 'client', lsClientSheet);
+            localStorage.removeItem('profitpilot_clientSheet');
+          } catch (err) {
+            console.error('Failed to migrate client sheet to DB, keeping localStorage:', err.message);
+          }
         }
         const lsExpenseSheet = loadFromLS('profitpilot_expenseSheet', null);
         if (!sheets?.expense && lsExpenseSheet && lsExpenseSheet.connected) {
           setExpenseSheet({ ...SHEET_CONNECTION_DEFAULTS, ...lsExpenseSheet });
-          saveSheetConnection(user.id, 'expense', lsExpenseSheet).catch(() => {});
-          localStorage.removeItem('profitpilot_expenseSheet');
+          try {
+            await saveSheetConnection(user.id, 'expense', lsExpenseSheet);
+            localStorage.removeItem('profitpilot_expenseSheet');
+          } catch (err) {
+            console.error('Failed to migrate expense sheet to DB, keeping localStorage:', err.message);
+          }
         }
       } catch (err) {
         console.error('Failed to load data from Supabase:', err.message);

@@ -292,7 +292,10 @@ export async function loadSheetConnections(userId) {
     .from('sheet_connections')
     .select('*')
     .eq('user_id', userId);
-  if (error) return null;
+  if (error) {
+    console.error('loadSheetConnections error:', error.message);
+    return null;
+  }
   const result = {};
   for (const row of (data || [])) {
     result[row.sheet_type] = {
@@ -323,7 +326,7 @@ export async function saveSheetConnection(userId, sheetType, data) {
     onConflict: 'user_id, sheet_type',
     ignoreDuplicates: false
   });
-  if (error) console.error('Failed to save sheet connection:', error.message);
+  if (error) throw new Error(error.message);
 }
 
 export async function deleteSheetConnection(userId, sheetType) {
