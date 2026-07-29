@@ -469,6 +469,7 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
+    localStorage.setItem('profitpilot_clientSheet', JSON.stringify(clientSheet));
     const persisted = { ...clientSheet };
     delete persisted.syncing;
     if (isSupabaseConfigured() && user) {
@@ -480,6 +481,7 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (!dataReady) return;
+    localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(expenseSheet));
     const persisted = { ...expenseSheet };
     delete persisted.syncing;
     if (isSupabaseConfigured() && user) {

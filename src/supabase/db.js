@@ -287,11 +287,10 @@ export async function deleteAuditLogs(ids) {
 }
 
 export async function loadSheetConnections(userId) {
-  if (!isSupabaseConfigured() || !userId) return null;
-  const { data, error } = await supabase
-    .from('sheet_connections')
-    .select('*')
-    .eq('user_id', userId);
+  if (!isSupabaseConfigured()) return null;
+  let query = supabase.from('sheet_connections').select('*');
+  if (userId) query = query.eq('user_id', userId);
+  const { data, error } = await query;
   if (error) {
     console.error('loadSheetConnections error:', error.message);
     return null;
@@ -311,9 +310,8 @@ export async function loadSheetConnections(userId) {
 }
 
 export async function saveSheetConnection(userId, sheetType, data) {
-  if (!isSupabaseConfigured() || !userId) return;
-  const { error } = await supabase.from('sheet_connections').upsert({
-    user_id: userId,
+  if (!isSupabaseConfigured()) return;
+  const payload = {
     sheet_type: sheetType,
     url: data.url || '',
     connected: data.connected || false,
@@ -322,16 +320,21 @@ export async function saveSheetConnection(userId, sheetType, data) {
     error: data.error || '',
     found_tabs: data.foundTabs || [],
     updated_at: new Date().toISOString()
-  }, {
-    onConflict: 'user_id, sheet_type',
+  };
+  if (userId) payload.user_id = userId;
+  const onConflict = userId ? 'user_id, sheet_type' : 'sheet_type';
+  const { error } = await supabase.from('sheet_connections').upsert(payload, {
+    onConflict,
     ignoreDuplicates: false
   });
   if (error) throw new Error(error.message);
 }
 
 export async function deleteSheetConnection(userId, sheetType) {
-  if (!isSupabaseConfigured() || !userId) return;
-  await supabase.from('sheet_connections').delete().eq('user_id', userId).eq('sheet_type', sheetType);
+  if (!isSupabaseConfigured()) return;
+  let query = supabase.from('sheet_connections').delete().eq('sheet_type', sheetType);
+  if (userId) query = query.eq('user_id', userId);
+  await query;
 }
 
 export async function loadBankDeposits() {
@@ -441,9 +444,6 @@ export async function migrateFromLocalStorage() {
 
   const syncLogs = loadLS('profitpilot_syncLogs', null);
   if (syncLogs && syncLogs.length > 0) await saveSyncLogs(syncLogs);
-
-  localStorage.removeItem('profitpilot_clientSheet');
-  localStorage.removeItem('profitpilot_expenseSheet');
 
   return true;
 }
