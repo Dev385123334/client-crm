@@ -756,19 +756,28 @@ export const AppProvider = ({ children }) => {
       const recurring = sourceExpenses.filter(e => e.frequency === 'Monthly Recurring');
       if (recurring.length === 0) return afterRemoval;
 
-      const newExpenses = recurring.map(e => ({
-        id: uuidv4(),
-        name: e.name,
-        amount: e.amount,
-        category: e.category,
-        frequency: e.frequency,
-        date: `${year}-${month}-01`,
-        status: e.status || 'Paid',
-        notes: e.notes || '',
-        carriedOver: true,
-        month,
-        year
-      }));
+      const existingNames = new Set(
+        afterRemoval
+          .filter(e => e.month === month && e.year === year)
+          .map(e => e.name.toLowerCase())
+      );
+      const newExpenses = [];
+      for (const e of recurring) {
+        if (existingNames.has(e.name.toLowerCase())) continue;
+        newExpenses.push({
+          id: uuidv4(),
+          name: e.name,
+          amount: e.amount,
+          category: e.category,
+          frequency: e.frequency,
+          date: `${year}-${month}-01`,
+          status: e.status || 'Paid',
+          notes: e.notes || '',
+          carriedOver: true,
+          month,
+          year
+        });
+      }
       return [...afterRemoval, ...newExpenses];
     });
   }, []);
