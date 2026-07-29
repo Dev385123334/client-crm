@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import { parseGoogleSheetDate, parseUSDAmount, parseINRAmount, categorizeExpense, parseTabName, getBaseRole } from '../utils/helpers';
@@ -25,6 +25,8 @@ const VITE_GOOGLE_SHEETS_API_KEY = typeof import.meta !== 'undefined' ? import.m
 
 export default function Integrations() {
   const { syncLogs, setSyncLogs, addRecordToMonth, saveRecordsNow, expenses, setExpenses, saveExpensesNow, clientSheet, setClientSheet, expenseSheet, setExpenseSheet, logAction } = useContext(AppContext);
+  const expensesRef = useRef(expenses);
+  useEffect(() => { expensesRef.current = expenses; }, [expenses]);
   const { user, userRole } = useContext(AuthContext);
   const baseRole = getBaseRole(userRole);
   const canSeeClient = baseRole === 'admin' || baseRole === 'pm_editor' || baseRole === 'senior_pm';
@@ -121,7 +123,7 @@ export default function Integrations() {
             const amount = parseINRAmount(amountRaw);
             if (!amount) { skipped++; continue; }
             const isoDate = parseExpenseDate(dateRaw) || `${monthTab.parsed.year}-${monthTab.parsed.month}-01`;
-            const isDup = expenses.some(e => e.date === isoDate && e.name === name && e.amount === amount);
+            const isDup = expensesRef.current.some(e => e.date === isoDate && e.name === name && e.amount === amount);
             if (isDup) { skipped++; continue; }
             allNew.push({
               id: uuidv4(),
@@ -145,8 +147,6 @@ export default function Integrations() {
         if (allNew.length > 0) {
           setExpenses(prev => [...prev, ...allNew]);
         }
-
-        await new Promise(r => setTimeout(r, 800));
 
         try {
           await saveExpensesNow();
@@ -276,8 +276,6 @@ export default function Integrations() {
           totalImported += imported;
           totalSkipped += skipped;
         }
-
-        await new Promise(r => setTimeout(r, 800));
 
         try {
           await saveRecordsNow();
@@ -608,6 +606,10 @@ export default function Integrations() {
                 const setSheet = setupStep === 'client' ? setClientSheet : setExpenseSheet;
                 const sheet = setupStep === 'client' ? clientSheet : expenseSheet;
                 if (!sheet.url) return;
+                if (sheet.connected) {
+                  setSetupError('Already connected. Disconnect first to reconnect.');
+                  return;
+                }
                 if (setupStep === 'expense') {
                   if (!VITE_GOOGLE_SHEETS_API_KEY) return;
                   const sheetInfo = parseSheetUrl(sheet.url);

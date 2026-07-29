@@ -103,6 +103,16 @@ function cleanupExpiredTrash(records) {
   return records;
 }
 
+function dedupExpenses(exps) {
+  const seen = new Set();
+  return exps.filter(e => {
+    const key = `${e.date}|${e.name}|${e.amount}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function filterLogsOlderThan(logs, days) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
@@ -124,6 +134,8 @@ function loadFromLS(key, defaultData) {
     return saved ? JSON.parse(saved) : defaultData;
   } catch { return defaultData; }
 }
+
+const SHEET_CONNECTION_DEFAULTS = { url: '', connected: false, status: 'disconnected', lastSync: null, error: '', foundTabs: [] };
 
 export const AppProvider = ({ children }) => {
   const [dataReady, setDataReady] = useState(false);
@@ -154,15 +166,8 @@ export const AppProvider = ({ children }) => {
   const [disputes, setDisputes] = useState(() => loadFromLS('profitpilot_disputes', []));
   const [auditLogs, setAuditLogs] = useState([]);
 
-  const sheetConnectionDefaults = { url: '', connected: false, status: 'disconnected', lastSync: null, error: '', foundTabs: [] };
-  const [clientSheet, setClientSheet] = useState(() => {
-    const saved = loadFromLS('profitpilot_clientSheet', null);
-    return saved ? { ...sheetConnectionDefaults, ...saved } : { ...sheetConnectionDefaults };
-  });
-  const [expenseSheet, setExpenseSheet] = useState(() => {
-    const saved = loadFromLS('profitpilot_expenseSheet', null);
-    return saved ? { ...sheetConnectionDefaults, ...saved } : { ...sheetConnectionDefaults };
-  });
+  const [clientSheet, setClientSheet] = useState({ ...SHEET_CONNECTION_DEFAULTS });
+  const [expenseSheet, setExpenseSheet] = useState({ ...SHEET_CONNECTION_DEFAULTS });
 
   const { user, loading: authLoading } = useContext(AuthContext);
 
@@ -179,7 +184,7 @@ export const AppProvider = ({ children }) => {
       setMonthlyRecords({});
     }
 
-    setExpenses(loadFromLS('profitpilot_expenses', []));
+    setExpenses(dedupExpenses(loadFromLS('profitpilot_expenses', [])));
     setTeam(loadFromLS('profitpilot_team', []));
     setSyncLogs(loadFromLS('profitpilot_syncLogs', []));
     setAssignments(loadFromLS('profitpilot_assignments', []));
@@ -279,10 +284,12 @@ export const AppProvider = ({ children }) => {
 
         const localExpenses = loadFromLS('profitpilot_expenses', null);
         if (exp && exp.length > 0) {
-          setExpenses(exp);
-          localStorage.setItem('profitpilot_expenses', JSON.stringify(exp));
+          const deduped = dedupExpenses(exp);
+          setExpenses(deduped);
+          localStorage.setItem('profitpilot_expenses', JSON.stringify(deduped));
         } else if (localExpenses && localExpenses.length > 0) {
-          setExpenses(localExpenses);
+          const deduped = dedupExpenses(localExpenses);
+          setExpenses(deduped);
         }
         if (tm && tm.length > 0) setTeam(tm);
         if (logs) setSyncLogs(logs);
@@ -301,22 +308,27 @@ export const AppProvider = ({ children }) => {
           setAuditLogs(filtered);
         }
 
-        const sheets = await loadSheetConnections();
+        const sheets = await loadSheetConnections(user.id);
         if (sheets) {
           if (sheets.client) {
-            setClientSheet(prev => ({
-              ...prev,
-              ...sheets.client,
-              connected: prev.connected || sheets.client.connected
-            }));
+            setClientSheet(prev => ({ ...prev, ...sheets.client }));
           }
           if (sheets.expense) {
-            setExpenseSheet(prev => ({
-              ...prev,
-              ...sheets.expense,
-              connected: prev.connected || sheets.expense.connected
-            }));
+            setExpenseSheet(prev => ({ ...prev, ...sheets.expense }));
           }
+        }
+
+        const lsClientSheet = loadFromLS('profitpilot_clientSheet', null);
+        if (!sheets?.client && lsClientSheet && lsClientSheet.connected) {
+          setClientSheet({ ...SHEET_CONNECTION_DEFAULTS, ...lsClientSheet });
+          saveSheetConnection(user.id, 'client', lsClientSheet).catch(() => {});
+          localStorage.removeItem('profitpilot_clientSheet');
+        }
+        const lsExpenseSheet = loadFromLS('profitpilot_expenseSheet', null);
+        if (!sheets?.expense && lsExpenseSheet && lsExpenseSheet.connected) {
+          setExpenseSheet({ ...SHEET_CONNECTION_DEFAULTS, ...lsExpenseSheet });
+          saveSheetConnection(user.id, 'expense', lsExpenseSheet).catch(() => {});
+          localStorage.removeItem('profitpilot_expenseSheet');
         }
       } catch (err) {
         console.error('Failed to load data from Supabase:', err.message);
@@ -365,14 +377,36 @@ export const AppProvider = ({ children }) => {
     saveMonthlyNow();
   }, [dataReady, monthlyRecords, saveMonthlyNow]);
 
+  const saveInProgress = useRef(false);
+  const pendingSave = useRef(null);
+
   useEffect(() => {
     if (!dataReady) return;
-    const timer = setTimeout(() => {
-      localStorage.setItem('profitpilot_expenses', JSON.stringify(expenses));
+    if (saveInProgress.current) {
+      pendingSave.current = true;
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const current = expensesRef.current;
+      localStorage.setItem('profitpilot_expenses', JSON.stringify(current));
       if (isSupabaseConfigured()) {
-        saveExpenses(expenses).catch(err => {
-          console.error('Supabase save failed (data preserved in localStorage):', err.message);
-        });
+        saveInProgress.current = true;
+        try {
+          await saveExpenses(current);
+        } catch (err) {
+          console.error('Failed to save expenses to DB:', err.message);
+        }
+        saveInProgress.current = false;
+        if (pendingSave.current) {
+          pendingSave.current = false;
+          const latest = expensesRef.current;
+          localStorage.setItem('profitpilot_expenses', JSON.stringify(latest));
+          if (isSupabaseConfigured()) {
+            await saveExpenses(latest).catch(err =>
+              console.error('Failed to save expenses to DB:', err.message)
+            );
+          }
+        }
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -423,9 +457,8 @@ export const AppProvider = ({ children }) => {
     if (!dataReady) return;
     const persisted = { ...clientSheet };
     delete persisted.syncing;
-    localStorage.setItem('profitpilot_clientSheet', JSON.stringify(persisted));
-    if (isSupabaseConfigured()) {
-      saveSheetConnection('client', persisted).catch(err =>
+    if (isSupabaseConfigured() && user) {
+      saveSheetConnection(user.id, 'client', persisted).catch(err =>
         console.error('Failed to save client sheet to DB:', err.message)
       );
     }
@@ -435,9 +468,8 @@ export const AppProvider = ({ children }) => {
     if (!dataReady) return;
     const persisted = { ...expenseSheet };
     delete persisted.syncing;
-    localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(persisted));
-    if (isSupabaseConfigured()) {
-      saveSheetConnection('expense', persisted).catch(err =>
+    if (isSupabaseConfigured() && user) {
+      saveSheetConnection(user.id, 'expense', persisted).catch(err =>
         console.error('Failed to save expense sheet to DB:', err.message)
       );
     }
@@ -747,9 +779,10 @@ export const AppProvider = ({ children }) => {
     if (!dataReady) return;
     const key = `${currentYear}-${currentMonth}`;
     if (lastCarryKey.current === key) return;
+    if (expenses.length === 0) return;
     lastCarryKey.current = key;
     carryOverRecurringExpenses(currentMonth, currentYear);
-  }, [currentMonth, currentYear, carryOverRecurringExpenses, dataReady]);
+  }, [currentMonth, currentYear, carryOverRecurringExpenses, dataReady, expenses]);
 
   const deleteExpenses = useCallback(async (ids) => {
     setExpenses(prev => prev.filter(e => !ids.includes(e.id)));
@@ -772,7 +805,24 @@ export const AppProvider = ({ children }) => {
     const current = expensesRef.current;
     localStorage.setItem('profitpilot_expenses', JSON.stringify(current));
     if (isSupabaseConfigured()) {
-      await saveExpenses(current);
+      if (saveInProgress.current) {
+        pendingSave.current = true;
+        return;
+      }
+      saveInProgress.current = true;
+      try {
+        await saveExpenses(current);
+      } finally {
+        saveInProgress.current = false;
+        if (pendingSave.current) {
+          pendingSave.current = false;
+          const latest = expensesRef.current;
+          localStorage.setItem('profitpilot_expenses', JSON.stringify(latest));
+          await saveExpenses(latest).catch(err =>
+            console.error('Failed to save expenses to DB:', err.message)
+          );
+        }
+      }
     }
   }, []);
 

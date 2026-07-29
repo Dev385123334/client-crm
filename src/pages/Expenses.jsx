@@ -12,6 +12,8 @@ export default function Expenses() {
   const canDelete = getBaseRole(userRole) !== 'pm_editor';
 
   const { expenses, setExpenses, deleteExpenses, currentMonth, currentYear, formatINR, logAction, disputes, addDispute, updateDispute, deleteDispute } = useContext(AppContext);
+  const expensesRef = useRef(expenses);
+  useEffect(() => { expensesRef.current = expenses; }, [expenses]);
   const [tab, setTab] = useState('expenses');
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -90,7 +92,7 @@ export default function Expenses() {
       let isoDate = '';
       if (dateRaw) { const parts = dateRaw.split('/'); if (parts.length === 3) isoDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`; }
       if (!isoDate) isoDate = `${currentYear}-${currentMonth}-01`;
-      const isDup = expenses.some(e => e.date === isoDate && e.name === name && e.amount === amount);
+      const isDup = expensesRef.current.some(e => e.date === isoDate && e.name === name && e.amount === amount);
       if (isDup) { skipped++; return; }
       newExpenses.push({ id: uuidv4(), name, amount, category: categorizeExpense(name), frequency: 'Monthly Recurring', date: isoDate, status: 'Paid', notes: '', month: currentMonth, year: currentYear });
       imported++;
@@ -172,7 +174,6 @@ export default function Expenses() {
     const now = new Date().toISOString();
     const deleted = toDelete.map(e => ({ ...e, deletedAt: now }));
     setDeletedExpenses(prev => [...prev, ...deleted]);
-    setExpenses(prev => prev.filter(e => !selectedIds.has(e.id)));
     deleteExpenses(toDelete.map(e => e.id));
     logAction({ user, actionType: 'expense.bulk_delete', entityType: 'expense', entityName: `${toDelete.length} expenses`, details: { ids: toDelete.map(e => e.id), names: toDelete.map(e => e.name) } });
     setUndoData({ expenses: deleted, ids: new Set(deleted.map(e => e.id)) });
@@ -185,7 +186,6 @@ export default function Expenses() {
     const now = new Date().toISOString();
     const deleted = { ...exp, deletedAt: now };
     setDeletedExpenses(prev => [...prev, deleted]);
-    setExpenses(prev => prev.filter(e => e.id !== exp.id));
     deleteExpenses([exp.id]);
     logAction({ user, actionType: 'expense.delete', entityType: 'expense', entityId: exp.id, entityName: exp.name, details: { record: { ...exp } } });
     setUndoData({ expenses: [deleted], ids: new Set([deleted.id]) });
