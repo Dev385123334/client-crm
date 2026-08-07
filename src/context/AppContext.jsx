@@ -314,7 +314,7 @@ export const AppProvider = ({ children }) => {
           setAuditLogs(filtered);
         }
 
-        const sheets = await loadSheetConnections(user.id);
+        const sheets = await loadSheetConnections();
         if (sheets) {
           if (sheets.client) {
             setClientSheet(prev => ({ ...prev, ...sheets.client }));
@@ -328,7 +328,7 @@ export const AppProvider = ({ children }) => {
         if (!sheets?.client && lsClientSheet && lsClientSheet.connected) {
           setClientSheet({ ...SHEET_CONNECTION_DEFAULTS, ...lsClientSheet });
           try {
-            await saveSheetConnection(user.id, 'client', lsClientSheet);
+            await saveSheetConnection('client', lsClientSheet);
             localStorage.removeItem('profitpilot_clientSheet');
           } catch (err) {
             console.error('Failed to migrate client sheet to DB, keeping localStorage:', err.message);
@@ -338,7 +338,7 @@ export const AppProvider = ({ children }) => {
         if (!sheets?.expense && lsExpenseSheet && lsExpenseSheet.connected) {
           setExpenseSheet({ ...SHEET_CONNECTION_DEFAULTS, ...lsExpenseSheet });
           try {
-            await saveSheetConnection(user.id, 'expense', lsExpenseSheet);
+            await saveSheetConnection('expense', lsExpenseSheet);
             localStorage.removeItem('profitpilot_expenseSheet');
           } catch (err) {
             console.error('Failed to migrate expense sheet to DB, keeping localStorage:', err.message);
@@ -472,24 +472,24 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('profitpilot_clientSheet', JSON.stringify(clientSheet));
     const persisted = { ...clientSheet };
     delete persisted.syncing;
-    if (isSupabaseConfigured() && user) {
-      saveSheetConnection(user.id, 'client', persisted).catch(err =>
+    if (isSupabaseConfigured()) {
+      saveSheetConnection('client', persisted).catch(err =>
         console.error('Failed to save client sheet to DB:', err.message)
       );
     }
-  }, [dataReady, clientSheet, user]);
+  }, [dataReady, clientSheet]);
 
   useEffect(() => {
     if (!dataReady) return;
     localStorage.setItem('profitpilot_expenseSheet', JSON.stringify(expenseSheet));
     const persisted = { ...expenseSheet };
     delete persisted.syncing;
-    if (isSupabaseConfigured() && user) {
-      saveSheetConnection(user.id, 'expense', persisted).catch(err =>
+    if (isSupabaseConfigured()) {
+      saveSheetConnection('expense', persisted).catch(err =>
         console.error('Failed to save expense sheet to DB:', err.message)
       );
     }
-  }, [dataReady, expenseSheet, user]);
+  }, [dataReady, expenseSheet]);
 
   const monthKey = `${currentYear}-${currentMonth}`;
 

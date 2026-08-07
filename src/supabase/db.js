@@ -286,11 +286,9 @@ export async function deleteAuditLogs(ids) {
   await supabase.from('audit_logs').delete().in('id', ids);
 }
 
-export async function loadSheetConnections(userId) {
+export async function loadSheetConnections() {
   if (!isSupabaseConfigured()) return null;
-  let query = supabase.from('sheet_connections').select('*');
-  if (userId) query = query.eq('user_id', userId);
-  const { data, error } = await query;
+  const { data, error } = await supabase.from('sheet_connections').select('*');
   if (error) {
     console.error('loadSheetConnections error:', error.message);
     return null;
@@ -309,7 +307,7 @@ export async function loadSheetConnections(userId) {
   return result;
 }
 
-export async function saveSheetConnection(userId, sheetType, data) {
+export async function saveSheetConnection(sheetType, data) {
   if (!isSupabaseConfigured()) return;
   const payload = {
     sheet_type: sheetType,
@@ -321,20 +319,16 @@ export async function saveSheetConnection(userId, sheetType, data) {
     found_tabs: data.foundTabs || [],
     updated_at: new Date().toISOString()
   };
-  if (userId) payload.user_id = userId;
-  const onConflict = userId ? 'user_id, sheet_type' : 'sheet_type';
   const { error } = await supabase.from('sheet_connections').upsert(payload, {
-    onConflict,
+    onConflict: 'sheet_type',
     ignoreDuplicates: false
   });
   if (error) throw new Error(error.message);
 }
 
-export async function deleteSheetConnection(userId, sheetType) {
+export async function deleteSheetConnection(sheetType) {
   if (!isSupabaseConfigured()) return;
-  let query = supabase.from('sheet_connections').delete().eq('sheet_type', sheetType);
-  if (userId) query = query.eq('user_id', userId);
-  await query;
+  await supabase.from('sheet_connections').delete().eq('sheet_type', sheetType);
 }
 
 export async function loadBankDeposits() {
