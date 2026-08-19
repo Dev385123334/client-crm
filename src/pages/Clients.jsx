@@ -66,28 +66,61 @@ export default function Clients() {
   }, [undoData, undoRemaining]);
 
   useEffect(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    if (!currentMonthRecords.length) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const viewMonth = parseInt(currentMonth);
+    const viewYear = parseInt(currentYear);
+
     currentMonthRecords.forEach(r => {
       if (r.status !== 'Active' || r.paymentReceived > 0) return;
+
       const billingDate = r.billingStartDate || r.onboardingDate;
       const dueDay = parseInt(billingDate.split('-')[2]) || r.paymentDueDay || 1;
-      const viewMonth = parseInt(currentMonth);
-      const viewYear = parseInt(currentYear);
-      const lastDay = new Date(viewYear, viewMonth, 0).getDate();
-      const dueDayAdjusted = Math.min(dueDay, lastDay);
-      const dueDate = new Date(viewYear, viewMonth - 1, dueDayAdjusted);
-      dueDate.setHours(0, 0, 0, 0);
-      const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      if (diffDays <= -45) {
+
+      let overdueDays = 0;
+      let found = false;
+
+      const curLastDay = new Date(viewYear, viewMonth, 0).getDate();
+      const curDueDate = new Date(viewYear, viewMonth - 1, Math.min(dueDay, curLastDay));
+      curDueDate.setHours(0, 0, 0, 0);
+
+      if (today >= curDueDate) {
+        overdueDays = Math.floor((today.getTime() - curDueDate.getTime()) / (1000 * 60 * 60 * 24));
+        found = true;
+      } else {
+        let checkMonth = viewMonth - 1;
+        let checkYear = viewYear;
+        if (checkMonth < 1) { checkMonth = 12; checkYear--; }
+
+        for (let i = 0; i < 12; i++) {
+          const key = `${checkYear}-${String(checkMonth).padStart(2, '0')}`;
+          const monthRecs = monthlyRecords[key] || [];
+          const bizKey = (r.businessName || '').trim().toLowerCase();
+          const rec = monthRecs.find(mr => (mr.businessName || '').trim().toLowerCase() === bizKey && !mr.isDeleted);
+
+          if (!rec || rec.paymentReceived <= 0) {
+            const lastDay = new Date(checkYear, checkMonth, 0).getDate();
+            const passedDueDate = new Date(checkYear, checkMonth - 1, Math.min(dueDay, lastDay));
+            passedDueDate.setHours(0, 0, 0, 0);
+            overdueDays = Math.floor((today.getTime() - passedDueDate.getTime()) / (1000 * 60 * 60 * 24));
+            found = true;
+            break;
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (found && overdueDays >= 45) {
         updateRecordInMonth(r.id, {
           status: 'Paused',
-          statusDate: now.toISOString().split('T')[0],
-          statusNote: 'Auto-paused: 45+ days overdue'
+          statusDate: today.toISOString().split('T')[0],
+          statusNote: `Auto-paused: ${overdueDays} days overdue`
         });
       }
     });
-  }, [currentMonthRecords, currentMonth, currentYear]);
+  }, [currentMonthRecords, currentMonth, currentYear, monthlyRecords]);
 
   const handleUndo = () => {
     if (!undoData) return;
