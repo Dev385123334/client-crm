@@ -65,6 +65,30 @@ export default function Clients() {
     }
   }, [undoData, undoRemaining]);
 
+  useEffect(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    currentMonthRecords.forEach(r => {
+      if (r.status !== 'Active' || r.paymentReceived > 0) return;
+      const billingDate = r.billingStartDate || r.onboardingDate;
+      const dueDay = parseInt(billingDate.split('-')[2]) || r.paymentDueDay || 1;
+      const viewMonth = parseInt(currentMonth);
+      const viewYear = parseInt(currentYear);
+      const lastDay = new Date(viewYear, viewMonth, 0).getDate();
+      const dueDayAdjusted = Math.min(dueDay, lastDay);
+      const dueDate = new Date(viewYear, viewMonth - 1, dueDayAdjusted);
+      dueDate.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays <= -45) {
+        updateRecordInMonth(r.id, {
+          status: 'Paused',
+          statusDate: now.toISOString().split('T')[0],
+          statusNote: 'Auto-paused: 45+ days overdue'
+        });
+      }
+    });
+  }, [currentMonthRecords, currentMonth, currentYear]);
+
   const handleUndo = () => {
     if (!undoData) return;
     undoData.records.forEach(rec => {
@@ -106,6 +130,16 @@ export default function Clients() {
         overdueDays: 0
       };
     }
+    if (record.status === 'Paused') {
+      return {
+        category: 'paused',
+        diffDays: null,
+        label: 'PAUSED',
+        type: 'warning',
+        emoji: '\u23F8',
+        overdueDays: 0
+      };
+    }
     const billingDate = record.billingStartDate || record.onboardingDate;
     const dueDay = parseInt(billingDate.split('-')[2]) || record.paymentDueDay || 1;
     const viewMonth = parseInt(currentMonth);
@@ -128,7 +162,7 @@ export default function Clients() {
   }, [currentMonth, currentYear]);
 
   const categoryCounts = useMemo(() => {
-    const counts = { overdue: 0, duesoon: 0, paid: 0, cancelled: 0 };
+    const counts = { overdue: 0, duesoon: 0, paid: 0, cancelled: 0, paused: 0 };
     records.forEach(r => {
       const info = getPaymentInfo(r);
       if (info.category && Object.prototype.hasOwnProperty.call(counts, info.category)) {
@@ -152,7 +186,7 @@ export default function Clients() {
   }, [records, getPaymentInfo]);
 
   const activeCount = activeRecords.length;
-  const totalMRR = activeRecords.reduce((s, r) => s + r.monthlyPrice, 0);
+  const totalMRR = activeRecords.reduce((s, r) => s + r.monthlyPrice + (r.upsellAmount || 0) - (r.downsellAmount || 0) + (r.extraCharges || 0), 0);
   const upsellMRR = activeRecords.reduce((s, r) => s + (r.upsellAmount || 0), 0);
   const downsellMRR = activeRecords.reduce((s, r) => s + (r.downsellAmount || 0), 0);
   const avgClientValue = activeCount > 0 ? totalMRR / activeCount : 0;
@@ -235,7 +269,7 @@ export default function Clients() {
     if (sortBy === 'paymentStatus') {
       const catA = getPaymentInfo(a).category;
       const catB = getPaymentInfo(b).category;
-      const order = { overdue: 0, duesoon: 1, paid: 2, other: 3, cancelled: 4 };
+      const order = { overdue: 0, duesoon: 1, paused: 2, paid: 3, other: 4, cancelled: 5 };
       const oA = order[catA] ?? 99;
       const oB = order[catB] ?? 99;
       if (oA !== oB) return oA - oB;
@@ -300,7 +334,8 @@ export default function Clients() {
     status: 'Active', statusDate: '', statusNote: 'None',
     contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
     paymentReceived: '', upsell: '', downsell: '',
-    handledBy: 'Unassigned'
+    handledBy: 'Unassigned',
+    extraCharges: ''
   });
 
   const openAddModal = () => {
@@ -310,7 +345,8 @@ export default function Clients() {
       status: 'Active', statusDate: '', statusNote: 'None',
       contractEndDate: '', paymentDueDay: '', paymentMethod: 'Stripe', notes: '',
       paymentReceived: '', upsell: '', downsell: '',
-      handledBy: 'Unassigned'
+      handledBy: 'Unassigned',
+      extraCharges: ''
     });
     setEditRecordId(null);
     setFormErrors({});
@@ -337,7 +373,8 @@ export default function Clients() {
       paymentReceived: record.paymentReceived || '',
       upsell: record.upsellAmount || '',
       downsell: record.downsellAmount || '',
-      handledBy: record.handledBy || 'Unassigned'
+      handledBy: record.handledBy || 'Unassigned',
+      extraCharges: record.extraCharges || ''
     });
     setEditRecordId(record.id);
     setFormErrors({});
@@ -388,7 +425,8 @@ export default function Clients() {
       refundAmount: 0,
       chargebackAmount: 0,
       upsellAmount: upsellAmt,
-      downsellAmount: downsellAmt
+      downsellAmount: downsellAmt,
+      extraCharges: parseFloat(form.extraCharges) || 0
     };
 
     if (editRecordId) {
@@ -619,7 +657,7 @@ export default function Clients() {
         <div className="card stat-card" style={{ background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
           <div className="stat-label" style={{ color: 'var(--info)' }}>Current Month MRR</div>
           <div className="stat-value">{baseRole === 'pm_editor' ? showAmount(totalMRR) : showDual(totalMRR)}</div>
-          <div className="stat-sub">From active clients only</div>
+          <div className="stat-sub">Active clients + upsell - downsell + extra</div>
         </div>
         <div className="card stat-card" style={{ background: upsellMRR || downsellMRR ? 'var(--warning-bg)' : 'transparent', borderColor: upsellMRR || downsellMRR ? 'var(--warning)' : 'var(--border)' }}>
           <div className="stat-label" style={{ color: 'var(--warning)' }}>Upsell / Downsell MRR</div>
@@ -737,6 +775,7 @@ export default function Clients() {
           { key: 'duesoon', label: `Due Soon (${categoryCounts.duesoon})`, color: 'var(--warning)' },
           { key: 'paid', label: `Paid (${categoryCounts.paid})`, color: 'var(--success)' },
           { key: 'cancelled', label: `Cancelled (${categoryCounts.cancelled})`, color: 'var(--text-muted)' },
+          { key: 'paused', label: `Paused (${categoryCounts.paused})`, color: 'var(--warning)' },
         ].filter(p => p.key === 'all' || categoryCounts[p.key] > 0).map(p => (
           <button
             key={p.key}
@@ -801,7 +840,7 @@ export default function Clients() {
                 const paidNet = (record.paymentReceived || 0) + (record.upsellAmount || 0) - (record.downsellAmount || 0) - (record.refundAmount || 0) - (record.chargebackAmount || 0);
                 const psHasPayment = record.paymentReceived > 0;
                 return (
-                  <tr key={record.id} className={`${selectedIds.has(record.id) ? 'row-selected' : ''} ${ps.category === 'overdue' ? 'row-overdue' : ''} ${ps.category === 'duesoon' ? 'row-duesoon' : ''}`} style={{ cursor: 'pointer' }} onClick={() => { setDetailRecord(record); setShowDetailModal(true); }}>
+                  <tr key={record.id} className={`${selectedIds.has(record.id) ? 'row-selected' : ''} ${ps.category === 'overdue' ? 'row-overdue' : ''} ${ps.category === 'duesoon' ? 'row-duesoon' : ''} ${record.status === 'Cancelled' ? 'row-cancelled' : ''} ${record.status === 'Paused' ? 'row-paused' : ''}`} style={{ cursor: 'pointer' }} onClick={() => { setDetailRecord(record); setShowDetailModal(true); }}>
                     <td className="checkbox-cell" onClick={e => e.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -837,7 +876,7 @@ export default function Clients() {
                     <td>
                       <span className="font-semibold">{formatUSD(record.monthlyPrice)}</span>
                       <span className="text-muted text-xs" style={{ marginLeft: 6 }}>(&asymp;{formatINR(convertToINR(record.monthlyPrice))})</span>
-                      {(record.upsellAmount > 0 || record.downsellAmount > 0) && (
+                      {(record.upsellAmount > 0 || record.downsellAmount > 0 || record.extraCharges > 0) && (
                         <div className="flex items-center gap-2" style={{ marginTop: 2 }}>
                           {record.upsellAmount > 0 && (
                             <span className="text-xs" style={{ color: 'var(--success)', fontWeight: 600 }}>
@@ -853,6 +892,11 @@ export default function Clients() {
                               <span className="text-muted" style={{ fontWeight: 400 }}>
                                 {' '}({formatUSD(record.monthlyPrice - record.downsellAmount + record.upsellAmount)})
                               </span>
+                            </span>
+                          )}
+                          {record.extraCharges > 0 && (
+                            <span className="text-xs" style={{ color: 'var(--info)', fontWeight: 600 }}>
+                              +{formatUSD(record.extraCharges)} extra
                             </span>
                           )}
                         </div>
@@ -1057,6 +1101,12 @@ export default function Clients() {
                   Net Receipt: {formatUSD((parseFloat(form.paymentReceived) || 0) + (parseFloat(form.upsell) || 0) - (parseFloat(form.downsell) || 0))}
                 </span>
               </div>
+            </div>
+
+            <div className="input-group" style={{ marginBottom: 16 }}>
+              <label className="input-label">Extra Charges (One-time, this month only)</label>
+              <input className="input-field" type="number" placeholder="0" value={form.extraCharges} onChange={e => setForm({ ...form, extraCharges: e.target.value })} />
+              <span className="text-xs text-muted" style={{ marginTop: 4, display: 'block' }}>Additional amount for extra work done this month. Resets to $0 next month.</span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

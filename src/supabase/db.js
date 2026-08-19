@@ -24,6 +24,7 @@ function mapRecordToDB(rec) {
     chargeback_amount: rec.chargebackAmount || 0,
     upsell_amount: rec.upsellAmount || 0,
     downsell_amount: rec.downsellAmount || 0,
+    extra_charges: rec.extraCharges || 0,
     is_deleted: rec.isDeleted || false,
     deleted_at: rec.deletedAt || null,
     deleted_reason: rec.deletedReason || ''
@@ -52,6 +53,7 @@ function mapDBToRecord(row) {
     chargebackAmount: Number(row.chargeback_amount) || 0,
     upsellAmount: Number(row.upsell_amount) || 0,
     downsellAmount: Number(row.downsell_amount) || 0,
+    extraCharges: Number(row.extra_charges) || 0,
     isDeleted: row.is_deleted || false,
     deletedAt: row.deleted_at || null,
     deletedReason: row.deleted_reason || '',
@@ -222,6 +224,12 @@ export async function deleteMonthlyRecords(ids) {
   if (!isSupabaseConfigured() || ids.length === 0) return;
   const { error } = await supabase.from('monthly_client_records').delete().in('id', ids);
   if (error) throw new Error(`Failed to delete monthly records from DB: ${error.message}`);
+}
+
+export async function deleteAllMonthlyRecords() {
+  if (!isSupabaseConfigured()) return;
+  const { error } = await supabase.from('monthly_client_records').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  if (error) throw new Error(`Failed to clear client records: ${error.message}`);
 }
 
 export async function loadClientPmAssignments() {

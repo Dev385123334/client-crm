@@ -10,7 +10,7 @@ import {
   loadSyncLogs, saveSyncLogs,
   migrateFromLocalStorage,
   deleteExpensesFromDB,
-  deleteMonthlyRecords,
+  deleteMonthlyRecords, deleteAllMonthlyRecords,
   loadClientPmAssignments, saveClientPmAssignments, deleteClientPmAssignment,
   insertAuditLog, loadAuditLogs, deleteAuditLogs,
   loadSheetConnections, saveSheetConnection,
@@ -47,6 +47,7 @@ function createMonthlyRecord(recordData, overrides = {}) {
     chargebackAmount: recordData.chargebackAmount || 0,
     upsellAmount: recordData.upsellAmount || 0,
     downsellAmount: recordData.downsellAmount || 0,
+    extraCharges: recordData.extraCharges || 0,
     isDeleted: recordData.isDeleted || false,
     deletedAt: recordData.deletedAt || null,
     deletedReason: recordData.deletedReason || '',
@@ -273,6 +274,7 @@ export const AppProvider = ({ children }) => {
                     chargebackAmount: lr.chargebackAmount ?? sr.chargebackAmount ?? 0,
                     upsellAmount: lr.upsellAmount ?? sr.upsellAmount ?? 0,
                     downsellAmount: lr.downsellAmount ?? sr.downsellAmount ?? 0,
+                    extraCharges: lr.extraCharges ?? sr.extraCharges ?? 0,
                   };
                 }
                 return sr;
@@ -378,6 +380,7 @@ export const AppProvider = ({ children }) => {
   }, [dataReady, exchangeRate, profitGoal, currencyView, pendingWithdrawal]);
 
   const saveMonthlyNow = useCallback(() => {
+    if (deleteInProgress.current) return;
     localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(monthlyRecordsRef.current));
     if (isSupabaseConfigured()) {
       saveMonthlyRecords(monthlyRecordsRef.current).catch(err => {
@@ -393,6 +396,7 @@ export const AppProvider = ({ children }) => {
 
   const saveInProgress = useRef(false);
   const pendingSave = useRef(null);
+  const deleteInProgress = useRef(false);
 
   useEffect(() => {
     if (!dataReady) return;
@@ -558,7 +562,8 @@ export const AppProvider = ({ children }) => {
               refundAmount: 0,
               chargebackAmount: 0,
               upsellAmount: 0,
-              downsellAmount: 0
+              downsellAmount: 0,
+              extraCharges: 0
             });
             nextState[k] = [...futureExisting, carriedOver];
           }
@@ -696,18 +701,24 @@ export const AppProvider = ({ children }) => {
 
   const permanentlyDeleteRecord = useCallback(async (recordId, month, year) => {
     const key = `${year}-${month}`;
-    if (isSupabaseConfigured()) {
-      try {
+    deleteInProgress.current = true;
+    try {
+      setMonthlyRecords(prev => {
+        const records = prev[key];
+        if (!records) return prev;
+        return { ...prev, [key]: records.filter(r => r.id !== recordId) };
+      });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(monthlyRecordsRef.current));
+      if (isSupabaseConfigured()) {
         await deleteMonthlyRecords([recordId]);
-      } catch (err) {
-        console.error('Failed to delete record from Supabase:', err.message);
+        await saveMonthlyRecords(monthlyRecordsRef.current);
       }
+    } catch (err) {
+      console.error('Failed to permanently delete record:', err.message);
+    } finally {
+      deleteInProgress.current = false;
     }
-    setMonthlyRecords(prev => {
-      const records = prev[key];
-      if (!records) return prev;
-      return { ...prev, [key]: records.filter(r => r.id !== recordId) };
-    });
   }, []);
 
   const ensureMonthExists = useCallback((month, year) => {
@@ -727,6 +738,7 @@ export const AppProvider = ({ children }) => {
           chargebackAmount: 0,
           upsellAmount: 0,
           downsellAmount: 0,
+          extraCharges: 0,
           isDeleted: false,
           deletedAt: null,
           deletedReason: ''
@@ -823,6 +835,21 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('profitpilot_monthlyRecords', JSON.stringify(records));
     if (isSupabaseConfigured()) {
       await saveMonthlyRecords(records);
+    }
+  }, []);
+
+  const clearAllClientData = useCallback(async () => {
+    deleteInProgress.current = true;
+    try {
+      if (isSupabaseConfigured()) {
+        await deleteAllMonthlyRecords();
+      }
+      setMonthlyRecords({});
+      localStorage.removeItem('profitpilot_monthlyRecords');
+    } catch (err) {
+      console.error('Failed to clear client data:', err.message);
+    } finally {
+      deleteInProgress.current = false;
     }
   }, []);
 
@@ -991,6 +1018,7 @@ export const AppProvider = ({ children }) => {
       permanentlyDeleteRecord,
       ensureMonthExists,
       saveRecordsNow,
+      clearAllClientData,
       monthKey,
       expenses, setExpenses, deleteExpenses, saveExpensesNow,
       team, setTeam,
